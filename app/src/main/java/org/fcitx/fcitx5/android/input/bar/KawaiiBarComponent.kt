@@ -44,6 +44,7 @@ import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.ExtendedWindowAttached
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.PreeditUpdated
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.WindowDetached
+import org.fcitx.fcitx5.android.input.ai.AiVoiceWindow
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
 import org.fcitx.fcitx5.android.input.bar.ui.IdleUi
 import org.fcitx.fcitx5.android.input.bar.ui.TitleUi
@@ -261,6 +262,11 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         InputMethodUtil.switchInputMethod(service, id, subtype)
     }
 
+    // SogaKey: the right-hand toolbar button opens AI voice input; swipe down still hides the keyboard
+    private val aiVoiceCallback = View.OnClickListener {
+        windowManager.attachWindow(AiVoiceWindow())
+    }
+
     private val idleUi: IdleUi by lazy {
         IdleUi(context, theme, popup, commonKeyActionListener).apply {
             menuButton.setOnClickListener {
@@ -444,9 +450,14 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         voiceInputSubtype = InputMethodUtil.findVoiceSubtype(preferredVoiceInput)
         val shouldShowVoiceInput =
             showVoiceInputButton && voiceInputSubtype != null && !capFlags.has(CapabilityFlag.Password)
+        val isPassword = capFlags.has(CapabilityFlag.Password)
         idleUi.setHideKeyboardIsVoiceInput(
-            shouldShowVoiceInput,
-            if (shouldShowVoiceInput) switchToVoiceInputCallback else hideKeyboardCallback
+            !isPassword,
+            when {
+                isPassword -> hideKeyboardCallback
+                shouldShowVoiceInput -> switchToVoiceInputCallback
+                else -> aiVoiceCallback
+            }
         )
         evalIdleUiState()
     }

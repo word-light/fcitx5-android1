@@ -68,6 +68,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     private val keyboards: HashMap<String, BaseKeyboard> by lazy {
         hashMapOf(
             TextKeyboard.Name to TextKeyboard(context, theme),
+            ZhuyinKeyboard.Name to ZhuyinKeyboard(context, theme),
             NumberKeyboard.Name to NumberKeyboard(context, theme)
         )
     }
@@ -91,7 +92,8 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     // This will be called EXACTLY ONCE
     override fun onCreateView(): View {
         keyboardView = context.frameLayout(R.id.keyboard_view)
-        attachLayout(TextKeyboard.Name)
+        chewingActive = fcitx.runImmediately { inputMethodEntryCached }.uniqueName == ZhuyinKeyboard.ChewingIme
+        attachLayout(resolveTextLayout(TextKeyboard.Name))
         return keyboardView
     }
 
@@ -116,11 +118,17 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
         }
     }
 
+    // SogaKey: show the Zhuyin layout whenever the Chewing input method is active
+    private var chewingActive = false
+
+    private fun resolveTextLayout(name: String): String =
+        if (name == TextKeyboard.Name && chewingActive) ZhuyinKeyboard.Name else name
+
     fun switchLayout(to: String, remember: Boolean = true) {
-        val target = to.ifEmpty { lastSymbolType }
+        val target = resolveTextLayout(to.ifEmpty { lastSymbolType })
         ContextCompat.getMainExecutor(service).execute {
             if (keyboards.containsKey(target)) {
-                if (remember && target != TextKeyboard.Name) {
+                if (remember && target != TextKeyboard.Name && target != ZhuyinKeyboard.Name) {
                     lastSymbolType = target
                 }
                 if (target == currentKeyboardName) return@execute
@@ -148,6 +156,13 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     override fun onImeUpdate(ime: InputMethodEntry) {
+        val wasChewing = chewingActive
+        chewingActive = ime.uniqueName == ZhuyinKeyboard.ChewingIme
+        if (wasChewing != chewingActive &&
+            (currentKeyboardName == TextKeyboard.Name || currentKeyboardName == ZhuyinKeyboard.Name)
+        ) {
+            switchLayout(TextKeyboard.Name, remember = false)
+        }
         currentKeyboard?.onInputMethodUpdate(ime)
     }
 

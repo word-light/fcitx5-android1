@@ -1,0 +1,77 @@
+name: Build SogaKey
+
+# Builds the keyboard + Zhuyin + Korean plugins for arm64 phones (e.g. Samsung A56)
+# and publishes them as the "latest" release, downloadable from a phone browser.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sogakey
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      BUILD_ABI: arm64-v8a
+      SIGN_KEY_FILE: ${{ github.workspace }}/signing/sogakey.jks
+      SIGN_KEY_PWD: sogakey-personal
+      SIGN_KEY_ALIAS: sogakey
+    steps:
+      - name: Fetch source code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android environment
+        uses: android-actions/setup-android@v4
+        with:
+          packages: cmake;3.31.6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install extra-cmake-modules gettext
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build APKs
+        run: ./gradlew :app:assembleRelease :plugin:chewing:assembleRelease :plugin:hangul:assembleRelease
+
+      - name: Collect APKs
+        run: |
+          mkdir out
+          cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" out/1-SogaKey-main.apk
+          cp "$(ls plugin/chewing/build/outputs/apk/release/*.apk | head -1)" out/2-SogaKey-zhuyin-plugin.apk
+          cp "$(ls plugin/hangul/build/outputs/apk/release/*.apk | head -1)" out/3-SogaKey-korean-plugin.apk
+          ls -la out
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SogaKey-apks
+          path: out/
+
+      - name: Publish "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/*.apk \
+            --title "SogaKey 最新版（第 ${{ github.run_number }} 版）" \
+            --notes "安裝順序：1 主程式 → 2 注音外掛 → 3 韓文外掛（不用韓文可略過）。更新時直接安裝新版覆蓋即可。" \
+            --latest

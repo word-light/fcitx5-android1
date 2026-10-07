@@ -12,6 +12,9 @@
         tools:node="remove" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- SogaKey AI voice input -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- remove intent queries merged from library manifest (namely Android-Image-Cropper) -->
@@ -47,6 +50,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FcitxAppTheme"
         tools:targetApi="33">
+        <activity
+            android:name=".input.ai.AiVoiceSettingsActivity"
+            android:exported="true"
+            android:icon="@drawable/ic_baseline_keyboard_voice_24"
+            android:label="SogaKey 語音設定"
+            android:taskAffinity="org.fcitx.fcitx5.android.ai"
+            android:theme="@style/Theme.FcitxAppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".ui.setup.SetupActivity"
             android:exported="false"
