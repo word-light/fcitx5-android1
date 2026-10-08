@@ -8,7 +8,6 @@ package org.fcitx.fcitx5.android.input.candidates
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.view.View
 import androidx.recyclerview.widget.RecyclerView
 import org.fcitx.fcitx5.android.core.CandidateWord
 
@@ -34,7 +33,8 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
             drawable = font != null
         }
         ui.setFont(font)
-        itemView.visibility = if (drawable) View.VISIBLE else View.GONE
+        // never use GONE here: FlexboxLayoutManager crashes (IndexOutOfBounds) with hidden children
+        itemView.alpha = if (drawable) 1f else 0f
     }
 
     fun clear() {
