@@ -1,0 +1,77 @@
+diff --git a/src/eim.cpp b/src/eim.cpp
+index 2e1437d..590d01d 100644
+--- a/src/eim.cpp
++++ b/src/eim.cpp
+@@ -118,6 +118,34 @@ private:
+     int index_;
+ };
+ 
++// SogaKey: candidates shown while typing, without entering chewing's
++// selection mode (so Zhuyin keys like ㄅ="1" keep typing instead of selecting).
++class LiveCandidateWord : public CandidateWord {
++public:
++    LiveCandidateWord(ChewingEngine *engine, std::string str, int index)
++        : CandidateWord(Text(std::move(str))), engine_(engine), index_(index) {}
++
++    void select(InputContext *inputContext) const override {
++        auto *ctx = engine_->context();
++        if (chewing_cand_open(ctx) != 0) {
++            return;
++        }
++        chewing_cand_choose_by_index(ctx, index_);
++        chewing_cand_close(ctx);
++        // Gboard style: picking a candidate sends the whole sentence
++        chewing_commit_preedit_buf(ctx);
++        if (chewing_commit_Check(ctx)) {
++            inputContext->commitString(safeChewing_commit_String(ctx));
++        }
++        chewing_ack(ctx);
++        engine_->updateUI(inputContext);
++    }
++
++private:
++    ChewingEngine *engine_;
++    int index_;
++};
++
+ class ChewingCandidateList : public CandidateList,
+                              public PageableCandidateList,
+                              public CursorMovableCandidateList,
+@@ -339,6 +367,11 @@ void ChewingEngine::populateConfig() {
+     chewing_set_autoShiftCur(ctx, *config_.AutoShiftCursor ? 1 : 0);
+     chewing_set_spaceAsSelection(ctx, *config_.SpaceAsSelection ? 1 : 0);
+     chewing_set_escCleanAllBuf(ctx, 1);
++    // SogaKey: allow partial Zhuyin like Gboard
++    if (chewing_config_has_option(ctx, "chewing.conversion_engine")) {
++        chewing_config_set_int(ctx, "chewing.conversion_engine",
++                               FUZZY_CHEWING_CONVERSION_ENGINE);
++    }
+ }
+ 
+ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -654,6 +687,25 @@ void ChewingEngine::updateUI(InputContext *ic) {
+         std::make_unique<ChewingCandidateList>(this, ic));
+     if (ic->inputPanel().candidateList()->empty()) {
+         ic->inputPanel().setCandidateList(nullptr);
++        // SogaKey: no selection window open -> show live candidates for the
++        // phrase before the cursor
++        auto *ctx = context_.get();
++        if (chewing_buffer_Len(ctx) > 0 && chewing_cand_open(ctx) == 0) {
++            auto live = std::make_unique<CommonCandidateList>();
++            live->setPageSize(10);
++            chewing_cand_Enumerate(ctx);
++            int index = 0;
++            while (chewing_cand_hasNext(ctx) && index < 50) {
++                live->append<LiveCandidateWord>(
++                    this, chewing_cand_String_static(ctx), index);
++                index++;
++            }
++            chewing_cand_close(ctx);
++            if (!live->empty()) {
++                live->setGlobalCursorIndex(0);
++                ic->inputPanel().setCandidateList(std::move(live));
++            }
++        }
+     }
+ 
+     updatePreedit(ic);
