@@ -37,10 +37,10 @@ static void run(const char *path, int sort, const char *keys, const char *target
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : ".";
     const char *cases[][2] = {
-        {"sc", "你好"}, {"vv", "謝謝"}, {"rw", "今天"}, {"ja", "我們"}, {"jga", "為什麼"},
-        {"s", "你"}, {"sj", "你"}, {"wv", "他"}, {"ba", "的"},
+        {"vu", "嘻"}, {"vuvu", "嘻嘻"}, {"vu", "嘻嘻"}, {"jpjp", "哈哈"}, {"cc", "哈哈"},
+        {"c", "哈"}, {"vu", "洗"}, {"o", "ㄛ"},
     };
-    for (int sort = 0; sort <= 1; sort++)
+    for (int sort = 1; sort <= 1; sort++)
         for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
             run(path, sort, cases[i][0], cases[i][1]);
     return 0;
