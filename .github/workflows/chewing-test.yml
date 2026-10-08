@@ -18,24 +18,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: false
-      - name: Fetch the dictionary used by the app
-        run: git submodule update --init --depth 1 lib/fcitx5/src/main/cpp/prebuilt
-      - name: Build and run
+      - name: Look for Cangjie tables
         run: |
           exec > >(tee /tmp/log.txt) 2>&1
-          set -x
-          (
-            git clone https://github.com/chewing/libchewing.git /tmp/libchewing
-            cd /tmp/libchewing && git checkout a6a8fa4 && git submodule update --init --recursive
-            cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_SQLITE3=OFF
-            cmake --build build -j4
-            LIB=$(dirname $(find build -name 'libchewing.so*' | head -1))
-            HDR=$(find . -name chewing.h -printf '%h\n' | head -1)
-            gcc $GITHUB_WORKSPACE/tools/chewing-test/test.c -I$HDR -L$LIB -lchewing -o t
-            DICT=$GITHUB_WORKSPACE/lib/fcitx5/src/main/cpp/prebuilt/chewing-dict
-            ls -la $DICT
-            CHEWING_USER_PATH=/tmp/u LD_LIBRARY_PATH=$LIB ./t $DICT
-          ) || echo "FAILED"
+          sudo apt-get update -qq
+          apt-cache policy fcitx5-table-extra fcitx5-table-cangjie 2>&1 | head
+          sudo apt-get install -y fcitx5-table-extra || true
+          dpkg -L fcitx5-table-extra | grep -i "cangjie\|quick\|cj" || true
+          ls -la /usr/share/libime /usr/share/fcitx5/table 2>/dev/null | head -50
+          cat /usr/share/fcitx5/inputmethod/cangjie5.conf 2>/dev/null | head -40
       - name: Publish log
         if: always()
         env:
