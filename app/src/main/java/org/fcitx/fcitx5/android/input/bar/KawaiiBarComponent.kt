@@ -270,6 +270,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     private val idleUi: IdleUi by lazy {
         IdleUi(context, theme, popup, commonKeyActionListener).apply {
+            emptyBar.onPick = { text -> service.commitText(text) }
             menuButton.setOnClickListener {
                 when (idleUi.currentState) {
                     IdleUi.State.Empty -> {
@@ -466,7 +467,49 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         evalIdleUiState()
     }
 
+    // SogaKey: suggest ending punctuation / emoji after a finished sentence
+    private var preeditIsEmpty = true
+
+    private val questionEnds = listOf("嗎", "呢", "什麼", "怎麼", "為什麼", "誰", "哪", "多少", "幾")
+    private val excitedEnds = listOf("了", "啦", "喔", "哦", "啊", "吧", "耶", "囉", "唷", "呀", "哈", "嘻", "讚", "棒")
+
+    private fun refreshSuggestions() {
+        val strip = idleUi.emptyBar
+        if (!preeditIsEmpty || isCapabilityFlagsPassword) {
+            strip.show(emptyList())
+            return
+        }
+        val before = service.currentInputConnection
+            ?.getTextBeforeCursor(4, 0)?.toString().orEmpty()
+        val last = before.lastOrNull()
+        val isCjkWord = last != null && Character.UnicodeScript.of(last.code) == Character.UnicodeScript.HAN
+        val isLatinEnd = last != null && last.isLetterOrDigit() && !isCjkWord
+        if (before.isEmpty() || (!isCjkWord && !isLatinEnd)) {
+            strip.show(emptyList())
+            return
+        }
+        val items = when {
+            isLatinEnd -> listOf(".", ",", "!", "?", "😊", "😂", "❤️", "👍")
+            questionEnds.any { before.endsWith(it) } ->
+                listOf("？", "。", "😂", "🤔", "😊", "！")
+            excitedEnds.any { before.endsWith(it) } ->
+                listOf("！", "。", "😂", "😊", "❤️", "👍", "～", "🥰")
+            else -> listOf("。", "，", "！", "？", "～", "…", "😊", "😂", "❤️", "👍", "🙏")
+        }
+        strip.show(items)
+    }
+
+    override fun onSelectionUpdate(start: Int, end: Int) {
+        if (start != end) {
+            idleUi.emptyBar.show(emptyList())
+            return
+        }
+        refreshSuggestions()
+    }
+
     override fun onPreeditEmptyStateUpdate(empty: Boolean) {
+        preeditIsEmpty = empty
+        if (!empty) idleUi.emptyBar.show(emptyList())
         barStateMachine.push(PreeditUpdated, PreeditEmpty to empty)
     }
 
