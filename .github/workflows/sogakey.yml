@@ -38,6 +38,18 @@ jobs:
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing apply "$GITHUB_WORKSPACE/patches/chewing-sogakey.patch"
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing diff --stat
 
+      - name: Add Traditional Cangjie / Quick tables
+        run: |
+          P=lib/fcitx5/src/main/cpp/prebuilt
+          mkdir -p $P/sogakey-im $P/libime/table
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fcitx5-table-cangjie5 fcitx5-table-cangjie3 fcitx5-table-quick5 || true
+          for n in cangjie5 cangjie3 quick5; do
+            cp /usr/share/libime/$n.main.dict $P/libime/table/ || true
+            cp /usr/share/fcitx5/inputmethod/$n.conf $P/sogakey-im/ || true
+          done
+          ls -la $P/sogakey-im $P/libime/table
+
       - name: Prepare modern word frequency list
         run: |
           mkdir -p tmpfreq

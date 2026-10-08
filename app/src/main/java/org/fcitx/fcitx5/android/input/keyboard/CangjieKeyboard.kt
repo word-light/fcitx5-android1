@@ -36,7 +36,8 @@ class CangjieKeyboard(
     companion object {
         const val Name = "Cangjie"
 
-        fun isCangjie(imeName: String) = imeName.startsWith("cangjie")
+        fun isCangjie(imeName: String) =
+            imeName.startsWith("cangjie") || imeName.startsWith("quick")
 
         val Layout: List<List<KeyDef>> = listOf(
             listOf(CangjieKey("手", "q", 0.1f), CangjieKey("田", "w", 0.1f), CangjieKey("水", "e", 0.1f), CangjieKey("口", "r", 0.1f), CangjieKey("廿", "t", 0.1f), CangjieKey("卜", "y", 0.1f), CangjieKey("山", "u", 0.1f), CangjieKey("戈", "i", 0.1f), CangjieKey("人", "o", 0.1f), CangjieKey("心", "p", 0.1f)),
