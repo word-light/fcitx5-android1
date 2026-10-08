@@ -234,6 +234,8 @@ class HandwritingWindow : InputWindow.ExtendedInputWindow<HandwritingWindow>() {
                     gravity = Gravity.CENTER
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
                     setTextColor(theme.keyTextColor)
+                    org.fcitx.fcitx5.android.input.candidates.RareFonts.find(context, text)
+                        ?.let { typeface = it }
                     background = rounded(theme.keyBackgroundColor, 10)
                     setPadding(dp(16), 0, dp(16), 0)
                     minWidth = dp(52)

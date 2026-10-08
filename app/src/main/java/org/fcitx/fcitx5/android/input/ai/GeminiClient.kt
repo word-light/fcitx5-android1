@@ -51,7 +51,18 @@ object GeminiClient {
 輸出格式：{"source_lang":"zh","text":"...","translation":"..."}
 """.trimIndent()
 
+    /** Thinking is the main source of delay for dictation, so turn it off; fall back if the model refuses. */
     suspend fun recognize(apiKey: String, model: String, wav: ByteArray): VoiceResult =
+        try {
+            recognize(apiKey, model, wav, noThinking = true)
+        } catch (e: AiVoiceException) {
+            if (e.message?.contains("think", true) == true) recognize(apiKey, model, wav, noThinking = false)
+            else throw e
+        }
+
+    private suspend fun recognize(
+        apiKey: String, model: String, wav: ByteArray, noThinking: Boolean
+    ): VoiceResult =
         withContext(Dispatchers.IO) {
             if (apiKey.isBlank()) throw AiVoiceException("還沒設定 Gemini API 金鑰")
             val body = JSONObject().apply {
@@ -68,6 +79,7 @@ object GeminiClient {
                 put("generationConfig", JSONObject().apply {
                     put("temperature", 0.2)
                     put("responseMimeType", "application/json")
+                    if (noThinking) put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
                 })
             }.toString()
 
