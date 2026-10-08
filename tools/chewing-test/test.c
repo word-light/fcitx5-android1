@@ -37,8 +37,8 @@ static void run(const char *path, int sort, const char *keys, const char *target
 int main(int argc, char **argv) {
     const char *path = argc > 1 ? argv[1] : ".";
     const char *cases[][2] = {
-        {"vu", "嘻"}, {"vuvu", "嘻嘻"}, {"vu", "嘻嘻"}, {"jpjp", "哈哈"}, {"cc", "哈哈"},
-        {"c", "哈"}, {"vu", "洗"}, {"o", "ㄛ"},
+        {"g.3ru", "手機"}, {"g.r", "手機"}, {"g.ru", "手機"}, {"g.3r", "手機"},
+        {"g.3", "手"}, {"ru", "機"}, {"g.3ru", "手"},
     };
     for (int sort = 1; sort <= 1; sort++)
         for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
