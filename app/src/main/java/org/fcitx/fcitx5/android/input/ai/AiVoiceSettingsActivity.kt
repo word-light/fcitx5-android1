@@ -92,6 +92,19 @@ class AiVoiceSettingsActivity : AppCompatActivity() {
         })
         add(note("用法：在鍵盤上方按 🎤，說完按「說完了」，再選「輸入原文」或「翻譯」。"))
 
+        // 0. Keyboard setup shortcuts
+        add(heading("⓪ 輸入法設定"))
+        add(note("啟用 SogaKey 鍵盤、加入「新酷音」(注音) 和韓文，請按下面的按鈕。"))
+        add(button("設定輸入法（加入注音／韓文）") {
+            startActivity(
+                Intent(this, org.fcitx.fcitx5.android.ui.main.MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        })
+        add(button("開啟系統鍵盤設定（啟用 SogaKey）") {
+            startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+        })
+
         // 1. Microphone
         add(heading("① 麥克風"))
         micStatus = note("")
