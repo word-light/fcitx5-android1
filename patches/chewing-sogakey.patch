@@ -1,32 +1,19 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..590d01d 100644
+index 2e1437d..0d1ef93 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
-@@ -118,6 +118,34 @@ private:
+@@ -118,6 +118,21 @@ private:
      int index_;
  };
  
-+// SogaKey: candidates shown while typing, without entering chewing's
-+// selection mode (so Zhuyin keys like ㄅ="1" keep typing instead of selecting).
++// SogaKey: a candidate of the live (abbreviated Zhuyin) list.
 +class LiveCandidateWord : public CandidateWord {
 +public:
 +    LiveCandidateWord(ChewingEngine *engine, std::string str, int index)
 +        : CandidateWord(Text(std::move(str))), engine_(engine), index_(index) {}
 +
 +    void select(InputContext *inputContext) const override {
-+        auto *ctx = engine_->context();
-+        if (chewing_cand_open(ctx) != 0) {
-+            return;
-+        }
-+        chewing_cand_choose_by_index(ctx, index_);
-+        chewing_cand_close(ctx);
-+        // Gboard style: picking a candidate sends the whole sentence
-+        chewing_commit_preedit_buf(ctx);
-+        if (chewing_commit_Check(ctx)) {
-+            inputContext->commitString(safeChewing_commit_String(ctx));
-+        }
-+        chewing_ack(ctx);
-+        engine_->updateUI(inputContext);
++        engine_->commitLive(inputContext, index_);
 +    }
 +
 +private:
@@ -37,41 +24,347 @@ index 2e1437d..590d01d 100644
  class ChewingCandidateList : public CandidateList,
                               public PageableCandidateList,
                               public CursorMovableCandidateList,
-@@ -339,6 +367,11 @@ void ChewingEngine::populateConfig() {
+@@ -316,7 +331,13 @@ void ChewingEngine::reloadConfig() {
+ }
+ 
+ void ChewingEngine::populateConfig() {
+-    ChewingContext *ctx = context_.get();
++    applyConfig(context_.get(), false);
++    if (shadow_) {
++        applyConfig(shadow_.get(), true);
++    }
++}
++
++void ChewingEngine::applyConfig(ChewingContext *ctx, bool shadow) {
+ 
+     CHEWING_DEBUG() << "Set layout to: "
+                     << builtin_keymaps[static_cast<int>(*config_.Layout)];
+@@ -335,10 +356,133 @@ void ChewingEngine::populateConfig() {
+     chewing_set_selKey(ctx, selkey, 10);
+     chewing_set_candPerPage(ctx, *config_.PageSize);
+     chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
+-    chewing_set_phraseChoiceRearward(ctx, *config_.ChoiceBackward ? 1 : 0);
++    // SogaKey: the shadow context always lists phrases ending at the cursor
++    chewing_set_phraseChoiceRearward(
++        ctx, (shadow || *config_.ChoiceBackward) ? 1 : 0);
      chewing_set_autoShiftCur(ctx, *config_.AutoShiftCursor ? 1 : 0);
      chewing_set_spaceAsSelection(ctx, *config_.SpaceAsSelection ? 1 : 0);
      chewing_set_escCleanAllBuf(ctx, 1);
-+    // SogaKey: allow partial Zhuyin like Gboard
++    if (shadow) {
++        chewing_set_maxChiSymbolLen(ctx, CHEWING_MAX_LEN);
++    }
++    // SogaKey: partial Zhuyin (fuzzy prefix search) like Gboard
 +    if (chewing_config_has_option(ctx, "chewing.conversion_engine")) {
 +        chewing_config_set_int(ctx, "chewing.conversion_engine",
 +                               FUZZY_CHEWING_CONVERSION_ENGINE);
 +    }
++    // most frequent phrases first
++    if (chewing_config_has_option(ctx,
++                                  "chewing.sort_candidates_by_frequency")) {
++        chewing_config_set_int(ctx, "chewing.sort_candidates_by_frequency", 1);
++    }
++}
++
++// SogaKey: re-type the remembered keys into the shadow context and report
++// whether it reaches exactly the same state as the real context.
++bool ChewingEngine::replayMatches(const std::string &keys) {
++    auto *s = shadow_.get();
++    chewing_cand_close(s);
++    chewing_clean_preedit_buf(s);
++    chewing_clean_bopomofo_buf(s);
++    chewing_Reset(s);
++    for (char c : keys) {
++        chewing_handle_Default(s, static_cast<unsigned char>(c));
++    }
++    auto *ctx = context_.get();
++    return safeChewing_buffer_String(s) == safeChewing_buffer_String(ctx) &&
++           safeChewing_bopomofo_String(s) == safeChewing_bopomofo_String(ctx) &&
++           chewing_cursor_Current(s) == chewing_cursor_Current(ctx);
++}
++
++void ChewingEngine::syncTyped(int key) {
++    auto *ctx = context_.get();
++    if (safeChewing_buffer_String(ctx).empty() &&
++        safeChewing_bopomofo_String(ctx).empty()) {
++        clearTyped();
++        return;
++    }
++    if (!shadow_) {
++        shadow_.reset(getChewingContext());
++        applyConfig(shadow_.get(), true);
++    }
++    if (!typedValid_) {
++        return;
++    }
++    std::string keys = typed_;
++    if (key >= 0) {
++        keys.push_back(static_cast<char>(key));
++    }
++    // Backspace may remove a whole syllable: try shorter histories as well.
++    for (size_t drop = 0; drop <= 4 && drop <= keys.size(); ++drop) {
++        std::string candidate = keys.substr(0, keys.size() - drop);
++        if (replayMatches(candidate)) {
++            typed_ = std::move(candidate);
++            return;
++        }
++    }
++    typedValid_ = false;
++}
++
++// SogaKey: put the typed keys into the shadow context, followed by a dummy
++// initial so that the fuzzy engine counts the unfinished last syllable as part
++// of the phrase. Afterwards candidates can be opened on the shadow context.
++bool ChewingEngine::prepareShadow() {
++    if (!typedValid_ || typed_.empty() || !shadow_) {
++        return false;
++    }
++    if (!replayMatches(typed_)) {
++        typedValid_ = false;
++        return false;
++    }
++    auto *s = shadow_.get();
++    chewing_handle_Default(s, 'z');
++    return chewing_buffer_Len(s) > 0;
++}
++
++void ChewingEngine::finishLive(InputContext *ic, const std::string &text) {
++    if (!text.empty()) {
++        ic->commitString(text);
++    }
++    auto *ctx = context_.get();
++    chewing_cand_close(ctx);
++    chewing_clean_preedit_buf(ctx);
++    chewing_clean_bopomofo_buf(ctx);
++    chewing_Reset(ctx);
++    clearTyped();
++    updateUI(ic);
++}
++
++void ChewingEngine::commitLive(InputContext *ic, int index) {
++    if (!prepareShadow()) {
++        return;
++    }
++    auto *s = shadow_.get();
++    if (chewing_cand_open(s) != 0) {
++        return;
++    }
++    chewing_cand_choose_by_index(s, index);
++    chewing_cand_close(s);
++    chewing_clean_bopomofo_buf(s);
++    std::string text;
++    if (chewing_commit_preedit_buf(s) == 0) {
++        text = safeChewing_commit_String(s);
++    }
++    chewing_ack(s);
++    finishLive(ic, text);
++}
++
++void ChewingEngine::commitBest(InputContext *ic) {
++    if (!prepareShadow()) {
++        return;
++    }
++    auto *s = shadow_.get();
++    chewing_clean_bopomofo_buf(s);
++    std::string text;
++    if (chewing_commit_preedit_buf(s) == 0) {
++        text = safeChewing_commit_String(s);
++    }
++    chewing_ack(s);
++    finishLive(ic, text);
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -654,6 +687,25 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -348,6 +492,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+ 
+ void ChewingEngine::doReset(InputContextEvent &event) {
+     ChewingContext *ctx = context_.get();
++    clearTyped();
+     chewing_cand_close(ctx);
+     chewing_clean_preedit_buf(ctx);
+     chewing_clean_bopomofo_buf(ctx);
+@@ -471,6 +616,15 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+         return;
+     }
+ 
++    // SogaKey: Enter sends the best phrase for the abbreviated Zhuyin
++    if (liveActive() && (keyEvent.key().check(FcitxKey_Return) ||
++                         keyEvent.key().check(FcitxKey_KP_Enter))) {
++        keyEvent.filterAndAccept();
++        commitBest(ic);
++        return;
++    }
++
++    int typedKey = -1;
+     int chewingReturnValue = 0;
+     if (keyEvent.key().check(FcitxKey_space)) {
+         chewingReturnValue = chewing_handle_Space(ctx);
+@@ -492,6 +646,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+         }
+         chewingReturnValue = chewing_handle_Default(ctx, scan_code);
+         chewing_set_easySymbolInput(ctx, 0);
++        typedKey = scan_code;
+     } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
+         if ((chewing_buffer_Check(ctx)) == 0 &&
+             (chewing_bopomofo_Check(ctx) == 0)) {
+@@ -564,6 +719,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+         keyEvent.filterAndAccept();
+         ic->commitString(safeChewing_commit_String(ctx));
+     }
++    syncTyped(typedKey);
+     updateUI(ic);
+ }
+ 
+@@ -591,6 +747,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+     }
+ }
+ 
++// Standard (Dachen) keyboard: key -> Zhuyin symbol, used to show what was typed.
++static const char *zhuyinOf(char c) {
++    switch (c) {
++    case '1': return "ㄅ";
++    case 'q': return "ㄆ";
++    case 'a': return "ㄇ";
++    case 'z': return "ㄈ";
++    case '2': return "ㄉ";
++    case 'w': return "ㄊ";
++    case 's': return "ㄋ";
++    case 'x': return "ㄌ";
++    case 'e': return "ㄍ";
++    case 'd': return "ㄎ";
++    case 'c': return "ㄏ";
++    case 'r': return "ㄐ";
++    case 'f': return "ㄑ";
++    case 'v': return "ㄒ";
++    case '5': return "ㄓ";
++    case 't': return "ㄔ";
++    case 'g': return "ㄕ";
++    case 'b': return "ㄖ";
++    case 'y': return "ㄗ";
++    case 'h': return "ㄘ";
++    case 'n': return "ㄙ";
++    case 'u': return "ㄧ";
++    case 'j': return "ㄨ";
++    case 'm': return "ㄩ";
++    case '8': return "ㄚ";
++    case 'i': return "ㄛ";
++    case 'k': return "ㄜ";
++    case ',': return "ㄝ";
++    case '9': return "ㄞ";
++    case 'o': return "ㄟ";
++    case 'l': return "ㄠ";
++    case '.': return "ㄡ";
++    case '0': return "ㄢ";
++    case 'p': return "ㄣ";
++    case ';': return "ㄤ";
++    case '/': return "ㄥ";
++    case '-': return "ㄦ";
++    case '3': return "ˇ";
++    case '4': return "ˋ";
++    case '6': return "ˊ";
++    case '7': return "˙";
++    default: return nullptr;
++    }
++}
++
+ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+     ic->inputPanel().setClientPreedit(Text());
+     ic->inputPanel().setPreedit(Text());
+@@ -618,6 +822,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+         useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
+     Text preedit;
+ 
++    // SogaKey: while live candidates are shown, display what was typed
++    // (the Zhuyin) instead of chewing's guess for the unfinished syllables.
++    if (liveShown_ && !typed_.empty()) {
++        std::string typedZhuyin;
++        for (char c : typed_) {
++            if (const char *zy = zhuyinOf(c)) {
++                typedZhuyin += zy;
++            } else {
++                typedZhuyin.push_back(c);
++            }
++        }
++        preedit.setCursor(typedZhuyin.size());
++        preedit.append(std::move(typedZhuyin), {TextFormatFlag::HighLight, format});
++        if (useClientPreedit) {
++            ic->inputPanel().setClientPreedit(preedit);
++        } else {
++            ic->inputPanel().setPreedit(preedit);
++        }
++        return;
++    }
++
+     int cur = chewing_cursor_Current(ctx);
+     int rcur = text.size();
+     if (cur >= 0 && static_cast<size_t>(cur) < len) {
+@@ -652,8 +877,30 @@ void ChewingEngine::updateUI(InputContext *ic) {
+     ic->inputPanel().reset();
+     ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
++    liveShown_ = false;
      if (ic->inputPanel().candidateList()->empty()) {
          ic->inputPanel().setCandidateList(nullptr);
-+        // SogaKey: no selection window open -> show live candidates for the
-+        // phrase before the cursor
-+        auto *ctx = context_.get();
-+        if (chewing_buffer_Len(ctx) > 0 && chewing_cand_open(ctx) == 0) {
-+            auto live = std::make_unique<CommonCandidateList>();
-+            live->setPageSize(10);
-+            chewing_cand_Enumerate(ctx);
-+            int index = 0;
-+            while (chewing_cand_hasNext(ctx) && index < 50) {
-+                live->append<LiveCandidateWord>(
-+                    this, chewing_cand_String_static(ctx), index);
-+                index++;
-+            }
-+            chewing_cand_close(ctx);
-+            if (!live->empty()) {
-+                live->setGlobalCursorIndex(0);
-+                ic->inputPanel().setCandidateList(std::move(live));
++        // SogaKey: no selection window -> list phrases for the typed keys
++        if (prepareShadow()) {
++            auto *s = shadow_.get();
++            if (chewing_cand_open(s) == 0) {
++                auto live = std::make_unique<CommonCandidateList>();
++                live->setPageSize(10);
++                chewing_cand_Enumerate(s);
++                int index = 0;
++                while (chewing_cand_hasNext(s) && index < 60) {
++                    live->append<LiveCandidateWord>(
++                        this, chewing_cand_String_static(s), index);
++                    index++;
++                }
++                chewing_cand_close(s);
++                if (!live->empty()) {
++                    live->setGlobalCursorIndex(0);
++                    ic->inputPanel().setCandidateList(std::move(live));
++                    liveShown_ = true;
++                }
 +            }
 +        }
      }
  
      updatePreedit(ic);
+diff --git a/src/eim.h b/src/eim.h
+index 334d363..fdc6b14 100644
+--- a/src/eim.h
++++ b/src/eim.h
+@@ -211,7 +211,23 @@ public:
+ 
+     ChewingContext *context() { return context_.get(); }
+ 
++    // SogaKey: abbreviated Zhuyin with live candidates.
++    bool liveActive() const { return typedValid_ && !typed_.empty(); }
++    void clearTyped() {
++        typed_.clear();
++        typedValid_ = true;
++        liveShown_ = false;
++    }
++    bool prepareShadow();
++    void commitLive(InputContext *ic, int index);
++    void commitBest(InputContext *ic);
++
+ private:
++    void applyConfig(ChewingContext *ctx, bool shadow);
++    void syncTyped(int key);
++    bool replayMatches(const std::string &keys);
++    void finishLive(InputContext *ic, const std::string &text);
++
+     bool handleCandidateKeyEvent(const KeyEvent &keyEvent) const;
+     void updatePreeditImpl(InputContext *ic);
+ 
+@@ -221,6 +237,11 @@ private:
+     Instance *instance_;
+     ChewingConfig config_;
+     UniqueCPtr<ChewingContext, chewing_delete> context_;
++    // A second context used to preview phrases for the typed keys.
++    UniqueCPtr<ChewingContext, chewing_delete> shadow_;
++    std::string typed_;
++    bool typedValid_ = true;
++    bool liveShown_ = false;
+     TrackableObjectReference<InputContext> ic_;
+ };
+ 
