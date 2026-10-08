@@ -24,6 +24,12 @@ object ThemeManager {
     }
 
     val BuiltinThemes = listOf(
+        ThemePreset.SoftSakura,
+        ThemePreset.SoftMint,
+        ThemePreset.SoftLavender,
+        ThemePreset.SoftMilkTea,
+        ThemePreset.SoftSeaSalt,
+        ThemePreset.SoftDusk,
         ThemePreset.MaterialLight,
         ThemePreset.MaterialDark,
         ThemePreset.PixelLight,
