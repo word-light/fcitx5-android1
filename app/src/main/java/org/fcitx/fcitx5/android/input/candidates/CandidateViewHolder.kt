@@ -5,9 +5,7 @@
 
 package org.fcitx.fcitx5.android.input.candidates
 
-import android.content.Context
 import android.graphics.Paint
-import android.graphics.Typeface
 import androidx.recyclerview.widget.RecyclerView
 import org.fcitx.fcitx5.android.core.CandidateWord
 
@@ -24,46 +22,29 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
             candidate = newCandidate
             ui.updateCandidate(newCandidate)
         }
-        // SogaKey: hide rare characters the phone's fonts cannot draw (shown as empty boxes)
-        val t = newCandidate.text
-        var font: Typeface? = null
-        var drawable = t.isEmpty() || t.all { it.code < 0x2E80 } || glyphPaint.hasGlyph(t)
-        if (!drawable) {
-            font = RareFonts.find(itemView.context, t)
-            drawable = font != null
-        }
-        ui.setFont(font)
-        // never use GONE here: FlexboxLayoutManager crashes (IndexOutOfBounds) with hidden children
-        itemView.alpha = if (drawable) 1f else 0f
+        // expanded list: characters the phone cannot draw are made invisible (never GONE:
+        // FlexboxLayoutManager crashes with hidden children)
+        itemView.alpha = if (RareFonts.drawable(newCandidate.text)) 1f else 0f
     }
 
     fun clear() {
         update(-1, CandidateWord.Empty)
     }
-
-    companion object {
-        private val glyphPaint = Paint()
-    }
 }
 
-/** Bundled fallback fonts (Hanazono Mincho A/B) for rare characters phones usually lack. */
+/** Is [text] drawable with the phone's own fonts? (what other apps can show, too) */
 object RareFonts {
-    private var fonts: List<Typeface>? = null
     private val paint = Paint()
+    private val cache = object : LinkedHashMap<String, Boolean>(512, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Boolean>) = size > 4000
+    }
 
-    private fun load(ctx: Context): List<Typeface> = fonts ?: listOf("HanaMinA", "HanaMinB").mapNotNull {
-        try {
-            Typeface.createFromAsset(ctx.assets, "fonts/$it.ttf")
-        } catch (e: Exception) {
-            null
+    fun drawable(t: String): Boolean {
+        // only Han characters can be "too rare"; leave kana, hangul, emoji, symbols alone
+        val han = t.codePoints().anyMatch {
+            it in 0x3400..0x9FFF || it in 0xF900..0xFAFF || it in 0x20000..0x3FFFF
         }
-    }.also { fonts = it }
-
-    fun find(ctx: Context, text: String): Typeface? {
-        for (tf in load(ctx)) {
-            paint.typeface = tf
-            if (paint.hasGlyph(text)) return tf
-        }
-        return null
+        if (!han) return true
+        return cache.getOrPut(t) { paint.hasGlyph(t) }
     }
 }

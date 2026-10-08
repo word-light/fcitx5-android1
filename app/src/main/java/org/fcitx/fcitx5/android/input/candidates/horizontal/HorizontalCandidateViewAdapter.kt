@@ -14,6 +14,7 @@ import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.candidates.CandidateItemUi
 import org.fcitx.fcitx5.android.input.candidates.CandidateViewHolder
+import org.fcitx.fcitx5.android.input.candidates.RareFonts
 import splitties.dimensions.dp
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
@@ -32,9 +33,19 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
     var total = -1
         private set
 
+    /** position in [candidates] -> index in the engine's full list (some candidates are filtered out) */
+    private var origIdx: IntArray = IntArray(0)
+
+    /** how many engine candidates the first [shown] visible items cover */
+    fun nativeCount(shown: Int): Int =
+        if (shown <= 0 || origIdx.isEmpty()) 0 else origIdx[minOf(shown, origIdx.size) - 1] + 1
+
     @SuppressLint("NotifyDataSetChanged")
     fun updateCandidates(data: Array<CandidateWord>, total: Int) {
-        this.candidates = data
+        // SogaKey: drop characters the phone cannot draw, but remember the engine index
+        val keep = data.indices.filter { RareFonts.drawable(data[it].text) }
+        this.candidates = Array(keep.size) { data[keep[it]] }
+        this.origIdx = keep.toIntArray()
         this.total = total
         notifyDataSetChanged()
     }
@@ -56,7 +67,7 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
 
     @CallSuper
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
-        holder.update(position, candidates[position])
+        holder.update(origIdx[position], candidates[position])
     }
 
     @CallSuper

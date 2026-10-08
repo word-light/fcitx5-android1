@@ -44,10 +44,6 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
         })
     }
 
-    fun setFont(tf: android.graphics.Typeface?) {
-        text.typeface = tf ?: android.graphics.Typeface.DEFAULT
-    }
-
     fun updateCandidate(candidate: CandidateWord) {
         val fg = theme.candidateTextColor
         val altFg = theme.candidateCommentColor

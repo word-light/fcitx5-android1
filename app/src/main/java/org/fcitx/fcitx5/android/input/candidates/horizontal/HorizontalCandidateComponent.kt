@@ -77,10 +77,11 @@ class HorizontalCandidateComponent :
     val expandedCandidateOffset = _expandedCandidateOffset.asSharedFlow()
 
     private fun refreshExpanded(childCount: Int) {
-        _expandedCandidateOffset.tryEmit(childCount)
+        val nativeCount = adapter.nativeCount(childCount)
+        _expandedCandidateOffset.tryEmit(nativeCount)
         bar.expandButtonStateMachine.push(
             ExpandedCandidatesUpdated,
-            ExpandedCandidatesEmpty to (adapter.total == childCount)
+            ExpandedCandidatesEmpty to (adapter.total == nativeCount)
         )
     }
 
