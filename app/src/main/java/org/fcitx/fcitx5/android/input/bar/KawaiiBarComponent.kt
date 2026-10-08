@@ -271,6 +271,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val idleUi: IdleUi by lazy {
         IdleUi(context, theme, popup, commonKeyActionListener).apply {
             emptyBar.onPick = { text -> service.commitText(text) }
+            penButton.setOnClickListener { windowManager.attachWindow(HandwritingWindow()) }
             menuButton.setOnClickListener {
                 when (idleUi.currentState) {
                     IdleUi.State.Empty -> {

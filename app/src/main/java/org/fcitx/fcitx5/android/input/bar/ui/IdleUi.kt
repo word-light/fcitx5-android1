@@ -78,6 +78,11 @@ class IdleUi(
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
 
+    // SogaKey: handwriting shortcut sitting right next to the mic button
+    val penButton = ToolButton(ctx, R.drawable.ic_sogakey_pen, theme).apply {
+        contentDescription = "手寫"
+    }
+
     val emptyBar = SuggestionStripUi(ctx, theme)
 
     val buttonsUi = ButtonsBarUi(ctx, theme)
@@ -124,9 +129,13 @@ class IdleUi(
             endOfParent()
             centerVertically()
         })
+        add(penButton, lParams(size, size) {
+            before(hideKeyboardButton)
+            centerVertically()
+        })
         add(animator, lParams(matchConstraints, matchParent) {
             after(menuButton)
-            before(hideKeyboardButton)
+            before(penButton)
             centerVertically()
         })
     }
