@@ -27,7 +27,7 @@ data class VoiceResult(
         get() = if (sourceLang == "zh") "翻成英文" else "翻成中文"
 }
 
-class AiVoiceException(message: String) : Exception(message)
+class AiVoiceException(message: String, val code: Int = 0) : Exception(message)
 
 object GeminiClient {
 
@@ -51,14 +51,26 @@ object GeminiClient {
 輸出格式：{"source_lang":"zh","text":"...","translation":"..."}
 """.trimIndent()
 
-    /** Thinking is the main source of delay for dictation, so turn it off; fall back if the model refuses. */
-    suspend fun recognize(apiKey: String, model: String, wav: ByteArray): VoiceResult =
-        try {
-            recognize(apiKey, model, wav, noThinking = true)
-        } catch (e: AiVoiceException) {
-            if (e.message?.contains("think", true) == true) recognize(apiKey, model, wav, noThinking = false)
-            else throw e
+    /**
+     * Thinking is the main source of delay for dictation, so turn it off. If Google answers with a
+     * server error (overloaded, or the model dislikes the setting) retry: first without the
+     * thinking setting, then once more after a short pause.
+     */
+    suspend fun recognize(apiKey: String, model: String, wav: ByteArray): VoiceResult {
+        var last: AiVoiceException? = null
+        val plans = listOf(true to 0L, false to 0L, false to 1500L)
+        for ((noThinking, delayMs) in plans) {
+            if (delayMs > 0) kotlinx.coroutines.delay(delayMs)
+            try {
+                return recognize(apiKey, model, wav, noThinking)
+            } catch (e: AiVoiceException) {
+                val retryable = e.code in 500..599 || e.message?.contains("think", true) == true
+                if (!retryable) throw e
+                last = e
+            }
         }
+        throw last!!
+    }
 
     private suspend fun recognize(
         apiKey: String, model: String, wav: ByteArray, noThinking: Boolean
@@ -97,7 +109,7 @@ object GeminiClient {
                 val code = conn.responseCode
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val resp = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
-                if (code !in 200..299) throw AiVoiceException(describeError(code, resp))
+                if (code !in 200..299) throw AiVoiceException(describeError(code, resp), code)
                 parse(resp)
             } catch (e: AiVoiceException) {
                 throw e
@@ -121,7 +133,7 @@ object GeminiClient {
             401, 403 -> "API 金鑰無效或沒有權限，請到設定檢查"
             404 -> "找不到模型，請到設定檢查模型名稱（預設 ${AiVoicePrefs.DEFAULT_MODEL}）"
             429 -> "用量超過限制（免費額度用完或太頻繁），請稍後再試"
-            in 500..599 -> "Google 伺服器忙碌中，請再試一次"
+            in 500..599 -> "Google 伺服器忙碌中，請再試一次（$code：${msg.take(80)}）"
             else -> "錯誤 $code：$msg"
         }
     }
