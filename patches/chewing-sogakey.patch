@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..93ab50e 100644
+index 2e1437d..b0ce80d 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -28,7 +28,10 @@
@@ -13,6 +13,15 @@ index 2e1437d..93ab50e 100644
  #include <memory>
  #include <stdexcept>
  #include <string>
+@@ -43,7 +46,7 @@ namespace fcitx {
+ 
+ namespace {
+ 
+-constexpr int CHEWING_MAX_LEN = 18;
++constexpr int CHEWING_MAX_LEN = 39;
+ 
+ constexpr auto builtin_selectkeys = std::to_array<std::string_view>({
+     "1234567890",
 @@ -118,6 +121,53 @@ private:
      int index_;
  };
@@ -82,7 +91,7 @@ index 2e1437d..93ab50e 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +391,347 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +391,348 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -126,8 +135,7 @@ index 2e1437d..93ab50e 100644
 +    replayRaw(keys);
 +    auto *ctx = context_.get();
 +    return safeChewing_buffer_String(s) == safeChewing_buffer_String(ctx) &&
-+           safeChewing_bopomofo_String(s) == safeChewing_bopomofo_String(ctx) &&
-+           chewing_cursor_Current(s) == chewing_cursor_Current(ctx);
++           safeChewing_bopomofo_String(s) == safeChewing_bopomofo_String(ctx);
 +}
 +
 +void ChewingEngine::syncTyped(int key) {
@@ -301,7 +309,7 @@ index 2e1437d..93ab50e 100644
 +}
 +
 +std::unique_ptr<CommonCandidateList> ChewingEngine::buildLiveList() {
-+    if (!typedValid_ || typed_.empty() || !shadow_ || typed_.size() > 30) {
++    if (!typedValid_ || typed_.empty() || !shadow_) {
 +        return nullptr;
 +    }
 +    auto *s = shadow_.get();
@@ -309,7 +317,9 @@ index 2e1437d..93ab50e 100644
 +    // number of syllables after the first j keys (with a dummy initial)
 +    std::vector<int> lens(n + 1, 0);
 +    std::map<int, size_t> lastKeys;
-+    for (size_t j = 1; j <= n; ++j) {
++    // only the first ~24 keys (about 8 syllables) get their own candidates
++    const size_t maxKeys = std::min<size_t>(n, 24);
++    for (size_t j = 1; j <= maxKeys; ++j) {
 +        replayRaw(typed_.substr(0, j));
 +        chewing_handle_Default(s, 'z');
 +        lens[j] = chewing_buffer_Len(s);
@@ -431,7 +441,7 @@ index 2e1437d..93ab50e 100644
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +741,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +742,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -439,7 +449,7 @@ index 2e1437d..93ab50e 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,6 +865,53 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,6 +866,53 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -493,7 +503,7 @@ index 2e1437d..93ab50e 100644
      int chewingReturnValue = 0;
      if (keyEvent.key().check(FcitxKey_space)) {
          chewingReturnValue = chewing_handle_Space(ctx);
-@@ -492,6 +933,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +934,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -501,7 +511,7 @@ index 2e1437d..93ab50e 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +1006,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +1007,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -509,7 +519,7 @@ index 2e1437d..93ab50e 100644
      updateUI(ic);
  }
  
-@@ -591,6 +1034,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +1035,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -564,7 +574,7 @@ index 2e1437d..93ab50e 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +1109,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +1110,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -592,7 +602,7 @@ index 2e1437d..93ab50e 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +1164,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1165,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
