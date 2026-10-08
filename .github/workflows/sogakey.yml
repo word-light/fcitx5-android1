@@ -56,17 +56,33 @@ jobs:
           if curl -fsSL https://raw.githubusercontent.com/fxsjy/jieba/master/extra_dict/dict.txt.big -o tmpfreq/dict.txt.big; then
             python3 - <<'PY'
           import re
-          out = []
+          cjk = re.compile(r'[\u4e00-\u9fff]+')
+          words = []
+          agg = {}
           for line in open('tmpfreq/dict.txt.big', encoding='utf-8'):
               parts = line.split()
-              if len(parts) < 2:
+              if len(parts) < 2 or not parts[1].isdigit():
                   continue
-              word, freq = parts[0], parts[1]
-              if not freq.isdigit() or int(freq) < 20:
+              word, freq = parts[0], int(parts[1])
+              if not cjk.fullmatch(word) or freq < 3:
                   continue
-              if not re.fullmatch(r'[\u4e00-\u9fff]{1,4}', word):
-                  continue
-              out.append(word + '\t' + freq)
+              words.append((word, freq))
+              if len(word) >= 2:
+                  for ch in set(word):
+                      agg[ch] = agg.get(ch, 0) + freq
+          out = []
+          seen_single = set()
+          for word, freq in words:
+              if len(word) == 1:
+                  # single characters: how often they appear inside words overall
+                  score = max(freq, agg.get(word, 0))
+                  seen_single.add(word)
+                  out.append(word + '\t' + str(score))
+              elif len(word) <= 4 and freq >= 20:
+                  out.append(word + '\t' + str(freq))
+          for ch, score in agg.items():
+              if ch not in seen_single:
+                  out.append(ch + '\t' + str(score))
           open('lib/fcitx5/src/main/cpp/prebuilt/chewing-dict/sogakey-freq.tsv', 'w', encoding='utf-8').write('\n'.join(out) + '\n')
           print(len(out), 'words')
           PY
