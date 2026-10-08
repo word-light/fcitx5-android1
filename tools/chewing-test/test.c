@@ -27,11 +27,12 @@ static void run(const char *path, int rearward, const char *keys, const char *de
     ChewingContext *ctx = mk(path, rearward);
     printf("== rearward=%d keys='%s'  %s\n", rearward, keys, desc);
     for (const char *k = keys; *k; k++) chewing_handle_Default(ctx, *k);
-    printf("    typed: buffer='%s' pending='%s'\n", chewing_buffer_String_static(ctx), chewing_bopomofo_String_static(ctx));
-    cands(ctx, "no-space");
-    chewing_handle_Space(ctx);
-    printf("    after space: buffer='%s' pending='%s' commit=%d\n", chewing_buffer_String_static(ctx), chewing_bopomofo_String_static(ctx), chewing_commit_Check(ctx));
-    cands(ctx, "after-space");
+    printf("    real : buffer='%s' pending='%s'\n", chewing_buffer_String_static(ctx), chewing_bopomofo_String_static(ctx));
+    // shadow trick: a dummy initial forces the pending syllable into the buffer
+    chewing_handle_Default(ctx, 'z');
+    printf("    +z   : buffer='%s' pending='%s' cursor=%d len=%d\n", chewing_buffer_String_static(ctx), chewing_bopomofo_String_static(ctx),
+           chewing_cursor_Current(ctx), chewing_buffer_Len(ctx));
+    cands(ctx, "cands");
     chewing_delete(ctx);
 }
 
@@ -42,7 +43,9 @@ int main(int argc, char **argv) {
         {"wj", "tai wan (ㄊㄨ)"},
         {"vv", "xie xie (ㄒㄒ)"},
         {"rw", "jin tian (ㄐㄊ)"},
-        {"jgm", "wei shen me (ㄨㄕㄇ) -> 為什麼"},
+        {"jga", "wei shen me (ㄨㄕㄇ)"},
+        {"scs", "ㄋㄏㄕ"},
+        {"su3c", "你 + ㄏ"},
         {"ja", "wo men (ㄨㄇ)"},
         {"s", "ㄋ only"},
     };
