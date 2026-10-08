@@ -38,6 +38,31 @@ jobs:
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing apply "$GITHUB_WORKSPACE/patches/chewing-sogakey.patch"
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing diff --stat
 
+      - name: Prepare modern word frequency list
+        run: |
+          mkdir -p tmpfreq
+          if curl -fsSL https://raw.githubusercontent.com/fxsjy/jieba/master/extra_dict/dict.txt.big -o tmpfreq/dict.txt.big; then
+            python3 - <<'PY'
+          import re
+          out = []
+          for line in open('tmpfreq/dict.txt.big', encoding='utf-8'):
+              parts = line.split()
+              if len(parts) < 2:
+                  continue
+              word, freq = parts[0], parts[1]
+              if not freq.isdigit() or int(freq) < 20:
+                  continue
+              if not re.fullmatch(r'[\u4e00-\u9fff]{1,4}', word):
+                  continue
+              out.append(word + '\t' + freq)
+          open('lib/fcitx5/src/main/cpp/prebuilt/chewing-dict/sogakey-freq.tsv', 'w', encoding='utf-8').write('\n'.join(out) + '\n')
+          print(len(out), 'words')
+          PY
+            ls -la lib/fcitx5/src/main/cpp/prebuilt/chewing-dict/
+          else
+            echo "word list unavailable, skipping"
+          fi
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
