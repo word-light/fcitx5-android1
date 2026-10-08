@@ -50,6 +50,14 @@ jobs:
           done
           ls -la $P/sogakey-im $P/libime/table
 
+      - name: Add rare-character fonts (Hanazono Mincho, OFL)
+        run: |
+          sudo apt-get install -y --no-install-recommends fonts-hanazono
+          mkdir -p app/src/main/assets/fonts
+          cp /usr/share/fonts/truetype/hanazono/HanaMinA.ttf app/src/main/assets/fonts/
+          cp /usr/share/fonts/truetype/hanazono/HanaMinB.ttf app/src/main/assets/fonts/
+          ls -la app/src/main/assets/fonts
+
       - name: Prepare modern word frequency list
         run: |
           mkdir -p tmpfreq
