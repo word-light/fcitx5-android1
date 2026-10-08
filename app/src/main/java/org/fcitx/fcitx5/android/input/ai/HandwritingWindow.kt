@@ -19,6 +19,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -146,9 +147,11 @@ class HandwritingWindow : InputWindow.ExtendedInputWindow<HandwritingWindow>() {
 
     private val status by lazy {
         TextView(context).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setTextColor(theme.altKeyTextColor)
-            text = "用手指在下面的方框寫字"
+            gravity = Gravity.CENTER_VERTICAL
+            maxLines = 2
+            text = "用手指在下面寫字"
         }
     }
 
@@ -174,13 +177,16 @@ class HandwritingWindow : InputWindow.ExtendedInputWindow<HandwritingWindow>() {
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(6), dp(12), dp(8))
-            addView(status, LinearLayout.LayoutParams(-1, -2))
+            // hint text shares the candidate row's height (shown only while no candidates)
             addView(
-                HorizontalScrollView(context).apply {
-                    isHorizontalScrollBarEnabled = false
-                    addView(candidateRow)
+                FrameLayout(context).apply {
+                    addView(status, FrameLayout.LayoutParams(-1, -1))
+                    addView(HorizontalScrollView(context).apply {
+                        isHorizontalScrollBarEnabled = false
+                        addView(candidateRow)
+                    }, FrameLayout.LayoutParams(-1, -1))
                 },
-                LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(4) }
+                LinearLayout.LayoutParams(-1, dp(48))
             )
             addView(inkView, LinearLayout.LayoutParams(-1, 0, 1f).apply {
                 topMargin = dp(6)
@@ -215,10 +221,12 @@ class HandwritingWindow : InputWindow.ExtendedInputWindow<HandwritingWindow>() {
         inkView.clearInk()
         lastInk = null
         candidateRow.removeAllViews()
+        status.visibility = View.VISIBLE
     }
 
     private fun showCandidates(list: List<String>) {
         candidateRow.removeAllViews()
+        status.visibility = if (list.isEmpty()) View.VISIBLE else View.INVISIBLE
         list.forEach { text ->
             candidateRow.addView(
                 TextView(context).apply {
@@ -272,9 +280,9 @@ class HandwritingWindow : InputWindow.ExtendedInputWindow<HandwritingWindow>() {
             manager.isModelDownloaded(model).addOnSuccessListener { downloaded ->
                 if (downloaded) {
                     modelReady = true
-                    status.text = "用手指在下面的方框寫字，寫完停一下會出現候選字"
+                    status.text = "用手指在下面寫字，停一下出現候選字"
                 } else {
-                    status.text = "第一次使用，正在下載手寫字庫（需要網路，約 20 MB）…"
+                    status.text = "首次使用，下載手寫字庫中（約 20 MB）…"
                     manager.download(model, DownloadConditions.Builder().build())
                         .addOnSuccessListener {
                             modelReady = true
