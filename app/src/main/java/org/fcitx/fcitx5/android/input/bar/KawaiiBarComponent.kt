@@ -45,6 +45,7 @@ import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.PreeditUpdated
 import org.fcitx.fcitx5.android.input.bar.KawaiiBarStateMachine.TransitionEvent.WindowDetached
 import org.fcitx.fcitx5.android.input.ai.AiVoiceWindow
+import org.fcitx.fcitx5.android.input.ai.HandwritingWindow
 import org.fcitx.fcitx5.android.input.bar.ui.CandidateUi
 import org.fcitx.fcitx5.android.input.bar.ui.IdleUi
 import org.fcitx.fcitx5.android.input.bar.ui.TitleUi
@@ -308,6 +309,9 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 }
                 clipboardButton.setOnClickListener {
                     windowManager.attachWindow(ClipboardWindow())
+                }
+                handwritingButton.setOnClickListener {
+                    windowManager.attachWindow(HandwritingWindow())
                 }
                 moreButton.setOnClickListener {
                     windowManager.attachWindow(StatusAreaWindow())

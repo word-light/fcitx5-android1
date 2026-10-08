@@ -66,7 +66,7 @@ fcitxComponent {
         "fcitx5-chinese-addons"
     )
     // exclude (delete immediately after install) tables that nobody would use
-    excludeFiles = listOf("cangjie", "erbi", "qxm", "wanfeng").map {
+    excludeFiles = listOf("erbi", "qxm", "wanfeng").map {
         "usr/share/fcitx5/inputmethod/$it.conf"
     }
     installPrebuiltAssets = true
@@ -108,6 +108,8 @@ dependencies {
     implementation(libs.androidx.startup)
     implementation(libs.androidx.viewpager2)
     implementation(libs.material)
+    // SogaKey: offline handwriting recognition
+    implementation("com.google.mlkit:digital-ink-recognition:18.1.0")
     implementation(libs.arrow.core)
     implementation(libs.arrow.functions)
     implementation(libs.imagecropper)
