@@ -489,12 +489,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             return
         }
         val items = when {
-            isLatinEnd -> listOf(".", ",", "!", "?", "😭", "💀", "🥹", "✨")
+            isLatinEnd -> listOf(".", ",", "!", "?", "🤣", "😘", "🥰", "😭", "💀", "🥹", "✨")
             questionEnds.any { before.endsWith(it) } ->
-                listOf("？", "。", "🥺", "👀", "🤔", "😳", "！")
+                listOf("？", "。", "🤔", "🥺", "👀", "😳", "🤪", "🤓", "！")
             excitedEnds.any { before.endsWith(it) } ->
-                listOf("！", "。", "😭", "💀", "🥹", "✨", "🫶", "🔥", "～", "🥰")
-            else -> listOf("。", "，", "！", "？", "～", "…", "😭", "💀", "🥹", "✨", "🫠", "🙄", "🫶", "👀")
+                listOf("！", "。", "🤣", "😘", "🥰", "😎", "😭", "💀", "🥹", "✨", "🫶", "🔥", "～")
+            else -> listOf("。", "，", "！", "？", "～", "…", "🤣", "😘", "🥰", "😃", "☺️", "🤪", "😎", "🤓", "😭", "💀", "🥹", "✨", "🫶", "👀")
         }
         strip.show(items)
     }
