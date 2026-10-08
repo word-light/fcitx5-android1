@@ -1,8 +1,19 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..d8ce971 100644
+index 2e1437d..27ee674 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
-@@ -118,6 +118,21 @@ private:
+@@ -28,7 +28,10 @@
+ #include <fcitx/text.h>
+ #include <fcitx/userinterface.h>
+ #include <fcitx/userinterfacemanager.h>
++#include <algorithm>
+ #include <filesystem>
++#include <fstream>
++#include <map>
+ #include <memory>
+ #include <stdexcept>
+ #include <string>
+@@ -118,6 +121,36 @@ private:
      int index_;
  };
  
@@ -21,10 +32,25 @@ index 2e1437d..d8ce971 100644
 +    int index_;
 +};
 +
++// SogaKey: a phrase the user picked before for the same typed keys.
++class LearnedCandidateWord : public CandidateWord {
++public:
++    LearnedCandidateWord(ChewingEngine *engine, std::string str)
++        : CandidateWord(Text(str)), engine_(engine), str_(std::move(str)) {}
++
++    void select(InputContext *inputContext) const override {
++        engine_->commitLearned(inputContext, str_);
++    }
++
++private:
++    ChewingEngine *engine_;
++    std::string str_;
++};
++
  class ChewingCandidateList : public CandidateList,
                               public PageableCandidateList,
                               public CursorMovableCandidateList,
-@@ -316,7 +331,13 @@ void ChewingEngine::reloadConfig() {
+@@ -316,7 +349,13 @@ void ChewingEngine::reloadConfig() {
  }
  
  void ChewingEngine::populateConfig() {
@@ -39,7 +65,7 @@ index 2e1437d..d8ce971 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +356,133 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +374,213 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -127,6 +153,84 @@ index 2e1437d..d8ce971 100644
 +    return chewing_buffer_Len(s) > 0;
 +}
 +
++static std::filesystem::path learnedPath() {
++    return StandardPaths::global().userDirectory(StandardPathsType::PkgData) /
++           "chewing-sogakey-learned.tsv";
++}
++
++void ChewingEngine::loadLearned() {
++    if (learnedLoaded_) {
++        return;
++    }
++    learnedLoaded_ = true;
++    std::ifstream in(learnedPath());
++    std::string line;
++    while (std::getline(in, line)) {
++        auto a = line.find('\t');
++        auto b = line.rfind('\t');
++        if (a == std::string::npos || a == b) {
++            continue;
++        }
++        int count = std::atoi(line.c_str() + b + 1);
++        if (count > 0) {
++            learned_[line.substr(0, a)][line.substr(a + 1, b - a - 1)] = count;
++        }
++    }
++}
++
++void ChewingEngine::saveLearned() {
++    std::error_code ec;
++    auto path = learnedPath();
++    std::filesystem::create_directories(path.parent_path(), ec);
++    std::ofstream out(path, std::ios::trunc);
++    for (const auto &[key, texts] : learned_) {
++        for (const auto &[text, count] : texts) {
++            out << key << '\t' << text << '\t' << count << '\n';
++        }
++    }
++}
++
++void ChewingEngine::learn(const std::string &typed, const std::string &text) {
++    if (typed.empty() || text.empty()) {
++        return;
++    }
++    loadLearned();
++    learned_[typed][text] += 1;
++    saveLearned();
++}
++
++std::vector<std::string> ChewingEngine::learnedFor(const std::string &typed) {
++    loadLearned();
++    std::vector<std::pair<int, std::string>> found;
++    for (const auto &[key, texts] : learned_) {
++        if (key.compare(0, typed.size(), typed) != 0) {
++            continue;
++        }
++        // exact key matches count double
++        int bonus = key.size() == typed.size() ? 2 : 1;
++        for (const auto &[text, count] : texts) {
++            found.emplace_back(count * bonus, text);
++        }
++    }
++    std::stable_sort(found.begin(), found.end(),
++                     [](const auto &x, const auto &y) { return x.first > y.first; });
++    std::vector<std::string> result;
++    for (auto &f : found) {
++        if (std::find(result.begin(), result.end(), f.second) == result.end()) {
++            result.push_back(std::move(f.second));
++        }
++        if (result.size() >= 20) {
++            break;
++        }
++    }
++    return result;
++}
++
++void ChewingEngine::commitLearned(InputContext *ic, const std::string &text) {
++    learn(typed_, text);
++    finishLive(ic, text);
++}
++
 +void ChewingEngine::finishLive(InputContext *ic, const std::string &text) {
 +    if (!text.empty()) {
 +        ic->commitString(text);
@@ -156,6 +260,7 @@ index 2e1437d..d8ce971 100644
 +        text = safeChewing_commit_String(s);
 +    }
 +    chewing_ack(s);
++    learn(typed_, text);
 +    finishLive(ic, text);
 +}
 +
@@ -170,11 +275,12 @@ index 2e1437d..d8ce971 100644
 +        text = safeChewing_commit_String(s);
 +    }
 +    chewing_ack(s);
++    learn(typed_, text);
 +    finishLive(ic, text);
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +492,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +590,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -182,7 +288,7 @@ index 2e1437d..d8ce971 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,6 +616,42 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,6 +714,42 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -225,7 +331,7 @@ index 2e1437d..d8ce971 100644
      int chewingReturnValue = 0;
      if (keyEvent.key().check(FcitxKey_space)) {
          chewingReturnValue = chewing_handle_Space(ctx);
-@@ -492,6 +673,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +771,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -233,7 +339,7 @@ index 2e1437d..d8ce971 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +746,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +844,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -241,7 +347,7 @@ index 2e1437d..d8ce971 100644
      updateUI(ic);
  }
  
-@@ -591,6 +774,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +872,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -296,7 +402,7 @@ index 2e1437d..d8ce971 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +849,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +947,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -324,7 +430,7 @@ index 2e1437d..d8ce971 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +904,30 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1002,38 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
@@ -337,11 +443,19 @@ index 2e1437d..d8ce971 100644
 +            if (chewing_cand_open(s) == 0) {
 +                auto live = std::make_unique<CommonCandidateList>();
 +                live->setPageSize(10);
++                auto learnedList = learnedFor(typed_);
++                for (const auto &text : learnedList) {
++                    live->append<LearnedCandidateWord>(this, text);
++                }
 +                chewing_cand_Enumerate(s);
 +                int index = 0;
 +                while (chewing_cand_hasNext(s) && index < 1500) {
-+                    live->append<LiveCandidateWord>(
-+                        this, chewing_cand_String_static(s), index);
++                    std::string cand = chewing_cand_String_static(s);
++                    if (std::find(learnedList.begin(), learnedList.end(),
++                                  cand) == learnedList.end()) {
++                        live->append<LiveCandidateWord>(this, std::move(cand),
++                                                        index);
++                    }
 +                    index++;
 +                }
 +                chewing_cand_close(s);
@@ -356,10 +470,18 @@ index 2e1437d..d8ce971 100644
  
      updatePreedit(ic);
 diff --git a/src/eim.h b/src/eim.h
-index 334d363..fdc6b14 100644
+index 334d363..100eefa 100644
 --- a/src/eim.h
 +++ b/src/eim.h
-@@ -211,7 +211,23 @@ public:
+@@ -26,6 +26,7 @@
+ #include <fcitx/inputmethodengine.h>
+ #include <fcitx/instance.h>
+ #include <fcitx/text.h>
++#include <map>
+ #include <string>
+ #include <vector>
+ 
+@@ -211,7 +212,31 @@ public:
  
      ChewingContext *context() { return context_.get(); }
  
@@ -372,6 +494,9 @@ index 334d363..fdc6b14 100644
 +    }
 +    bool prepareShadow();
 +    void commitLive(InputContext *ic, int index);
++    void commitLearned(InputContext *ic, const std::string &text);
++    // phrases the user chose before for these typed keys, best first
++    std::vector<std::string> learnedFor(const std::string &typed);
 +    void commitBest(InputContext *ic);
 +
  private:
@@ -379,11 +504,16 @@ index 334d363..fdc6b14 100644
 +    void syncTyped(int key);
 +    bool replayMatches(const std::string &keys);
 +    void finishLive(InputContext *ic, const std::string &text);
++    void learn(const std::string &typed, const std::string &text);
++    void loadLearned();
++    void saveLearned();
++    std::map<std::string, std::map<std::string, int>> learned_;
++    bool learnedLoaded_ = false;
 +
      bool handleCandidateKeyEvent(const KeyEvent &keyEvent) const;
      void updatePreeditImpl(InputContext *ic);
  
-@@ -221,6 +237,11 @@ private:
+@@ -221,6 +246,11 @@ private:
      Instance *instance_;
      ChewingConfig config_;
      UniqueCPtr<ChewingContext, chewing_delete> context_;
