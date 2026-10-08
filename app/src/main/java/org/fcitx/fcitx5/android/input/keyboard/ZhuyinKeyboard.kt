@@ -12,6 +12,7 @@ import android.content.Context
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Border
 import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Variant
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 import splitties.views.imageResource
@@ -26,7 +27,8 @@ class ZhuyinKey(
     Appearance.Text(
         displayText = zhuyin,
         textSize = textSize,
-        percentWidth = percentWidth
+        percentWidth = percentWidth,
+        border = Border.On
     ),
     setOf(
         Behavior.Press(KeyAction.FcitxKeyAction(key))
@@ -46,7 +48,8 @@ class DirectPunctKey(
         displayText = text,
         textSize = 22f,
         percentWidth = percentWidth,
-        variant = Variant.Alternative
+        variant = Variant.Alternative,
+        border = Border.On
     ),
     setOf(
         Behavior.Press(KeyAction.CommitAction(text))
