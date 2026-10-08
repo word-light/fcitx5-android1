@@ -22,7 +22,7 @@ jobs:
           exec > >(tee /tmp/log.txt) 2>&1
           (
             git clone https://github.com/chewing/libchewing.git /tmp/libchewing
-            cd /tmp/libchewing && git checkout a6a8fa4
+            cd /tmp/libchewing && git checkout a6a8fa4 && git submodule update --init --recursive
             cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_SQLITE3=OFF
             cmake --build build -j4
             LIB=$(dirname $(find build -name 'libchewing.so*' | head -1))
