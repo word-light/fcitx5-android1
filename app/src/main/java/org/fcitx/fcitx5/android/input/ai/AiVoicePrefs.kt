@@ -21,6 +21,10 @@ object AiVoicePrefs {
     fun apiKey(ctx: Context): String = sp(ctx).getString("api_key", "")!!.trim()
     fun setApiKey(ctx: Context, v: String) = sp(ctx).edit { putString("api_key", v.trim()) }
 
+    /** Optional: Groq key for fast Whisper transcription. Empty = use Gemini for everything. */
+    fun groqKey(ctx: Context): String = sp(ctx).getString("groq_key", "")!!.trim()
+    fun setGroqKey(ctx: Context, v: String) = sp(ctx).edit { putString("groq_key", v.trim()) }
+
     fun model(ctx: Context): String =
         sp(ctx).getString("model", "")!!.trim().ifEmpty { DEFAULT_MODEL }
 

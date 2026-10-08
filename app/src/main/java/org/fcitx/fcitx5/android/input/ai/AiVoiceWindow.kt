@@ -245,9 +245,33 @@ class AiVoiceWindow : InputWindow.ExtendedInputWindow<AiVoiceWindow>() {
         val model = AiVoicePrefs.model(context)
         job = service.lifecycleScope.launch {
             try {
-                val r = GeminiClient.recognize(key, model, wav)
-                if (r.text.isEmpty()) showIdle("沒有聽清楚，再說一次")
-                else showResult(r)
+                val groq = AiVoicePrefs.groqKey(context)
+                var raw: String? = null
+                if (groq.isNotEmpty()) {
+                    // fast path: Whisper first (show the raw text at once), then Gemini text clean-up
+                    raw = try {
+                        GroqClient.transcribe(groq, wav)
+                    } catch (e: AiVoiceException) {
+                        null // fall back to Gemini listening to the audio
+                    }
+                }
+                if (raw != null) {
+                    if (raw.isEmpty()) {
+                        showIdle("沒有聽清楚，再說一次")
+                    } else {
+                        showResult(VoiceResult("other", raw, ""))
+                        val refined = try {
+                            GeminiClient.refine(key, model, raw)
+                        } catch (e: AiVoiceException) {
+                            null
+                        }
+                        if (refined != null && refined.text.isNotEmpty()) showResult(refined)
+                    }
+                } else {
+                    val r = GeminiClient.recognize(key, model, wav)
+                    if (r.text.isEmpty()) showIdle("沒有聽清楚，再說一次")
+                    else showResult(r)
+                }
             } catch (e: AiVoiceException) {
                 showError(e.message ?: "發生錯誤")
             } catch (e: kotlinx.coroutines.CancellationException) {

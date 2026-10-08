@@ -124,6 +124,74 @@ object GeminiClient {
             }
         }
 
+    private val TEXT_PROMPT = """
+你是語音輸入法的校稿員。下面是語音辨識出來的文字，請只輸出 JSON：
+
+1. source_lang："zh"（中文）、"en"（英文）、"ko"（韓文）或 "other"。
+2. text：整理成可以直接送出的文字。
+   - 中文一律用台灣慣用的繁體中文（簡體要轉成繁體）與全形標點（，。？！）。
+   - 刪掉口頭禪與贅字（嗯、呃、那個、就是說、um、uh），以及說錯後立刻更正的重複部分。
+   - 依語意補上標點，修正明顯的同音錯字。
+   - 不要增加原本沒說的內容，不要回答問題，不要加說明。
+   - 中英夾雜時保留原本的英文單字。
+3. translation：source_lang 是 "zh" → 翻成自然、口語的英文；其他語言 → 翻成台灣慣用的繁體中文。
+4. 如果文字是空的或沒有意義，text 和 translation 都填空字串。
+
+輸出格式：{"source_lang":"zh","text":"...","translation":"..."}
+
+辨識文字：
+""".trimIndent()
+
+    const val FAST_TEXT_MODEL = "gemini-flash-lite-latest"
+
+    /** Text-only clean-up + translation of an already transcribed sentence (fast). */
+    suspend fun refine(apiKey: String, model: String, raw: String): VoiceResult {
+        return try {
+            callText(apiKey, FAST_TEXT_MODEL, raw)
+        } catch (e: AiVoiceException) {
+            if (model == FAST_TEXT_MODEL) throw e
+            callText(apiKey, model, raw)
+        }
+    }
+
+    private suspend fun callText(apiKey: String, model: String, raw: String): VoiceResult =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().apply {
+                put("contents", JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().put(JSONObject().put("text", TEXT_PROMPT + raw)))
+                }))
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.2)
+                    put("responseMimeType", "application/json")
+                    put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                })
+            }.toString()
+            val url = URL(ENDPOINT + URLEncoder.encode(model, "UTF-8") + ":generateContent")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 20_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                setRequestProperty("x-goog-api-key", apiKey)
+            }
+            try {
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val resp = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+                if (code !in 200..299) throw AiVoiceException(describeError(code, resp), code)
+                parse(resp)
+            } catch (e: AiVoiceException) {
+                throw e
+            } catch (e: IOException) {
+                throw AiVoiceException("連線失敗：${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                conn.disconnect()
+            }
+        }
+
     private fun describeError(code: Int, resp: String): String {
         val msg = runCatching {
             JSONObject(resp).getJSONObject("error").getString("message")

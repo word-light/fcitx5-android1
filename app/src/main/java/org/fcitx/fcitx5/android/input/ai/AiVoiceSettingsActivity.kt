@@ -35,6 +35,7 @@ class AiVoiceSettingsActivity : AppCompatActivity() {
     private lateinit var micButton: Button
     private lateinit var keyInput: EditText
     private lateinit var modelInput: EditText
+    private lateinit var groqInput: EditText
     private lateinit var testButton: Button
 
     private val askMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
@@ -138,6 +139,25 @@ class AiVoiceSettingsActivity : AppCompatActivity() {
         testButton = button("測試連線") { test() }
         add(testButton)
 
+        // 2b. Groq key (optional, much faster)
+        add(heading("②-2 Groq 金鑰（選填，更快）"))
+        add(note("有填的話，錄音會先用 Groq 的 Whisper 很快轉成文字，再交給 Gemini 整理和翻譯。不填就維持原本的做法。到 console.groq.com 註冊後建立 API Key。"))
+        add(button("開啟 Groq 取得金鑰") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://console.groq.com/keys")))
+        })
+        groqInput = EditText(this).apply {
+            hint = "gsk_…"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(AiVoicePrefs.groqKey(this@AiVoiceSettingsActivity))
+        }
+        add(groqInput)
+        add(button("貼上 Groq 金鑰") {
+            val cm = getSystemService(ClipboardManager::class.java)
+            val clip = cm?.primaryClip?.getItemAt(0)?.coerceToText(this@AiVoiceSettingsActivity)
+            if (clip.isNullOrBlank()) toast("剪貼簿是空的") else groqInput.setText(clip.toString().trim())
+            save()
+        })
+
         // 3. Behaviour
         add(heading("③ 其他"))
         add(CheckBox(this).apply {
@@ -154,7 +174,7 @@ class AiVoiceSettingsActivity : AppCompatActivity() {
             setText(if (m == AiVoicePrefs.DEFAULT_MODEL) "" else m)
         }
         add(modelInput)
-        add(note("隱私說明：只有按 🎤 之後的錄音會送到 Google Gemini 處理；平常打字不會上傳。"))
+        add(note("隱私說明：只有按 🎤 之後的錄音會送出處理（有填 Groq 金鑰時送到 Groq，否則送到 Google Gemini）；平常打字不會上傳。"))
 
         val scroll = ScrollView(this).apply {
             addView(col, ViewGroup.LayoutParams(-1, -2))
@@ -189,6 +209,7 @@ class AiVoiceSettingsActivity : AppCompatActivity() {
 
     private fun save() {
         AiVoicePrefs.setApiKey(this, keyInput.text.toString())
+        AiVoicePrefs.setGroqKey(this, groqInput.text.toString())
         AiVoicePrefs.setModel(this, modelInput.text.toString())
     }
 
