@@ -1,0 +1,28 @@
+name: Chewing fuzzy test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'tools/chewing-test/**'
+      - '.github/workflows/chewing-test.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build libchewing (same commit as the app)
+        run: |
+          git clone https://github.com/chewing/libchewing.git /tmp/libchewing
+          cd /tmp/libchewing && git checkout a6a8fa4
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_SQLITE3=OFF
+          cmake --build build -j4
+          ls build build/data || true
+      - name: Run test
+        run: |
+          cd /tmp/libchewing
+          LIB=$(dirname $(find build -name 'libchewing.so*' | head -1))
+          gcc $GITHUB_WORKSPACE/tools/chewing-test/test.c -Icapi/include -Ibuild/include -I$(find build -name chewing.h -printf '%h\n' | head -1) -L$LIB -lchewing -o t
+          CHEWING_PATH=$(dirname $(find build -name tsi.dat | head -1)) CHEWING_USER_PATH=/tmp/u LD_LIBRARY_PATH=$LIB ./t
