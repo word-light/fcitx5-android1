@@ -11,6 +11,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.InputMethodEntry
+import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Border
 import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Variant
@@ -52,7 +53,7 @@ class DirectPunctKey(
         border = Border.On
     ),
     setOf(
-        Behavior.Press(KeyAction.CommitAction(text))
+        Behavior.Press(KeyAction.SymAction(KeySym(0x1000000 + text.codePointAt(0))))
     ),
     arrayOf(
         Popup.Preview(text),
@@ -133,7 +134,13 @@ class ZhuyinKeyboard(
             action is KeyAction.FcitxKeyAction &&
             action.act.any { it.code > 0x7f }
         ) {
-            super.onAction(KeyAction.CommitAction(action.act), source)
+            val cp = action.act.codePointAt(0)
+            if (Character.charCount(cp) == action.act.length) {
+                // goes through Chewing so a half-typed phrase is committed first
+                super.onAction(KeyAction.SymAction(KeySym(0x1000000 + cp)), source)
+            } else {
+                super.onAction(KeyAction.CommitAction(action.act), source)
+            }
             return
         }
         super.onAction(action, source)

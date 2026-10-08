@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..0d1ef93 100644
+index 2e1437d..09b3f71 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -118,6 +118,21 @@ private:
@@ -182,7 +182,7 @@ index 2e1437d..0d1ef93 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,6 +616,15 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,6 +616,42 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -194,11 +194,38 @@ index 2e1437d..0d1ef93 100644
 +        return;
 +    }
 +
++    // SogaKey: full-width punctuation keys (sent as unicode keysyms) first
++    // commit the phrase being typed, then the punctuation itself.
++    {
++        auto sym = static_cast<uint32_t>(keyEvent.key().sym());
++        if (!keyEvent.key().hasModifier() && sym >= 0x1000000 &&
++            (sym & 0xffffff) >= 0x2000) {
++            keyEvent.filterAndAccept();
++            if (liveActive()) {
++                commitBest(ic);
++            } else if (chewing_buffer_Check(ctx)) {
++                chewing_clean_bopomofo_buf(ctx);
++                std::string flushed;
++                if (chewing_commit_preedit_buf(ctx) == 0) {
++                    flushed = safeChewing_commit_String(ctx);
++                }
++                chewing_ack(ctx);
++                if (!flushed.empty()) {
++                    ic->commitString(flushed);
++                }
++                clearTyped();
++            }
++            ic->commitString(utf8::UCS4ToUTF8(sym & 0xffffff));
++            updateUI(ic);
++            return;
++        }
++    }
++
 +    int typedKey = -1;
      int chewingReturnValue = 0;
      if (keyEvent.key().check(FcitxKey_space)) {
          chewingReturnValue = chewing_handle_Space(ctx);
-@@ -492,6 +646,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +673,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -206,7 +233,7 @@ index 2e1437d..0d1ef93 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +719,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +746,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -214,7 +241,7 @@ index 2e1437d..0d1ef93 100644
      updateUI(ic);
  }
  
-@@ -591,6 +747,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +774,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -269,7 +296,7 @@ index 2e1437d..0d1ef93 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +822,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +849,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -297,7 +324,7 @@ index 2e1437d..0d1ef93 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +877,30 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +904,30 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
