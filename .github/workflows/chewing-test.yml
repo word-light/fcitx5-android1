@@ -1,0 +1,45 @@
+name: Chewing fuzzy test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'tools/chewing-test/**'
+      - '.github/workflows/chewing-test.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+      - name: Fetch the dictionary used by the app
+        run: git submodule update --init --depth 1 lib/fcitx5/src/main/cpp/prebuilt
+      - name: Build and run
+        run: |
+          exec > >(tee /tmp/log.txt) 2>&1
+          set -x
+          (
+            git clone https://github.com/chewing/libchewing.git /tmp/libchewing
+            cd /tmp/libchewing && git checkout a6a8fa4 && git submodule update --init --recursive
+            cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_SQLITE3=OFF
+            cmake --build build -j4
+            LIB=$(dirname $(find build -name 'libchewing.so*' | head -1))
+            HDR=$(find . -name chewing.h -printf '%h\n' | head -1)
+            gcc $GITHUB_WORKSPACE/tools/chewing-test/test.c -I$HDR -L$LIB -lchewing -o t
+            DICT=$GITHUB_WORKSPACE/lib/fcitx5/src/main/cpp/prebuilt/chewing-dict
+            ls -la $DICT
+            CHEWING_USER_PATH=/tmp/u LD_LIBRARY_PATH=$LIB ./t $DICT
+          ) || echo "FAILED"
+      - name: Publish log
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete chewing-test --yes --cleanup-tag || true
+          gh release create chewing-test /tmp/log.txt --title "chewing test log" --notes "test" --prerelease
