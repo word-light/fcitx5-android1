@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..09b3f71 100644
+index 2e1437d..d8ce971 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -118,6 +118,21 @@ private:
@@ -339,7 +339,7 @@ index 2e1437d..09b3f71 100644
 +                live->setPageSize(10);
 +                chewing_cand_Enumerate(s);
 +                int index = 0;
-+                while (chewing_cand_hasNext(s) && index < 60) {
++                while (chewing_cand_hasNext(s) && index < 1500) {
 +                    live->append<LiveCandidateWord>(
 +                        this, chewing_cand_String_static(s), index);
 +                    index++;
