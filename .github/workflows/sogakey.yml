@@ -6,6 +6,9 @@ name: Build SogaKey
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - 'tools/**'
+      - '.github/workflows/chewing-test.yml'
   workflow_dispatch:
 
 permissions:
