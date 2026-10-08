@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..27ee674 100644
+index 2e1437d..10d728e 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -28,7 +28,10 @@
@@ -13,7 +13,7 @@ index 2e1437d..27ee674 100644
  #include <memory>
  #include <stdexcept>
  #include <string>
-@@ -118,6 +121,36 @@ private:
+@@ -118,6 +121,53 @@ private:
      int index_;
  };
  
@@ -47,10 +47,27 @@ index 2e1437d..27ee674 100644
 +    std::string str_;
 +};
 +
++// SogaKey: a phrase covering the first `keys` typed keys.
++class SegCandidateWord : public CandidateWord {
++public:
++    SegCandidateWord(ChewingEngine *engine, std::string str, size_t keys)
++        : CandidateWord(Text(str)), engine_(engine), str_(std::move(str)),
++          keys_(keys) {}
++
++    void select(InputContext *inputContext) const override {
++        engine_->commitSeg(inputContext, str_, keys_);
++    }
++
++private:
++    ChewingEngine *engine_;
++    std::string str_;
++    size_t keys_;
++};
++
  class ChewingCandidateList : public CandidateList,
                               public PageableCandidateList,
                               public CursorMovableCandidateList,
-@@ -316,7 +349,13 @@ void ChewingEngine::reloadConfig() {
+@@ -316,7 +366,13 @@ void ChewingEngine::reloadConfig() {
  }
  
  void ChewingEngine::populateConfig() {
@@ -65,7 +82,7 @@ index 2e1437d..27ee674 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +374,213 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +391,309 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -93,7 +110,7 @@ index 2e1437d..27ee674 100644
 +
 +// SogaKey: re-type the remembered keys into the shadow context and report
 +// whether it reaches exactly the same state as the real context.
-+bool ChewingEngine::replayMatches(const std::string &keys) {
++void ChewingEngine::replayRaw(const std::string &keys) {
 +    auto *s = shadow_.get();
 +    chewing_cand_close(s);
 +    chewing_clean_preedit_buf(s);
@@ -102,6 +119,11 @@ index 2e1437d..27ee674 100644
 +    for (char c : keys) {
 +        chewing_handle_Default(s, static_cast<unsigned char>(c));
 +    }
++}
++
++bool ChewingEngine::replayMatches(const std::string &keys) {
++    auto *s = shadow_.get();
++    replayRaw(keys);
 +    auto *ctx = context_.get();
 +    return safeChewing_buffer_String(s) == safeChewing_buffer_String(ctx) &&
 +           safeChewing_bopomofo_String(s) == safeChewing_bopomofo_String(ctx) &&
@@ -226,6 +248,97 @@ index 2e1437d..27ee674 100644
 +    return result;
 +}
 +
++void ChewingEngine::commitSeg(InputContext *ic, const std::string &text,
++                              size_t keys) {
++    std::string consumed = typed_.substr(0, keys);
++    std::string rest = typed_.substr(std::min(keys, typed_.size()));
++    learn(consumed, text);
++    if (!text.empty()) {
++        ic->commitString(text);
++    }
++    auto *ctx = context_.get();
++    chewing_cand_close(ctx);
++    chewing_clean_preedit_buf(ctx);
++    chewing_clean_bopomofo_buf(ctx);
++    chewing_Reset(ctx);
++    clearTyped();
++    for (char c : rest) {
++        chewing_handle_Default(ctx, static_cast<unsigned char>(c));
++    }
++    if (!safeChewing_buffer_String(ctx).empty() ||
++        !safeChewing_bopomofo_String(ctx).empty()) {
++        typed_ = rest;
++    }
++    updateUI(ic);
++}
++
++std::unique_ptr<CommonCandidateList> ChewingEngine::buildLiveList() {
++    if (!typedValid_ || typed_.empty() || !shadow_ || typed_.size() > 30) {
++        return nullptr;
++    }
++    auto *s = shadow_.get();
++    const size_t n = typed_.size();
++    // number of syllables after the first j keys (with a dummy initial)
++    std::vector<int> lens(n + 1, 0);
++    std::map<int, size_t> lastKeys;
++    for (size_t j = 1; j <= n; ++j) {
++        replayRaw(typed_.substr(0, j));
++        chewing_handle_Default(s, 'z');
++        lens[j] = chewing_buffer_Len(s);
++        if (lens[j] > 0) {
++            lastKeys[lens[j]] = j;
++        }
++    }
++    auto live = std::make_unique<CommonCandidateList>();
++    live->setPageSize(10);
++    std::vector<std::string> seen;
++    auto add = [&](std::string text, size_t keys) {
++        if (std::find(seen.begin(), seen.end(), text) != seen.end()) {
++            return;
++        }
++        seen.push_back(text);
++        live->append<SegCandidateWord>(this, std::move(text), keys);
++    };
++    // phrases the user chose before (whole input)
++    for (const auto &text : learnedFor(typed_)) {
++        if (std::find(seen.begin(), seen.end(), text) == seen.end()) {
++            seen.push_back(text);
++            live->append<LearnedCandidateWord>(this, text);
++        }
++    }
++    // longest coverage first
++    for (auto it = lastKeys.rbegin(); it != lastKeys.rend(); ++it) {
++        const int len = it->first;
++        const size_t keys = it->second;
++        replayRaw(typed_.substr(0, keys));
++        chewing_handle_Default(s, 'z');
++        if (keys == n) {
++            // the engine's own best guess for everything typed
++            std::string guess = safeChewing_buffer_String(s);
++            if (!guess.empty() && static_cast<int>(utf8::length(guess)) == len) {
++                add(guess, keys);
++            }
++        }
++        if (chewing_cand_open(s) != 0) {
++            continue;
++        }
++        chewing_cand_Enumerate(s);
++        int count = 0;
++        while (chewing_cand_hasNext(s) && count < 1500) {
++            std::string cand = chewing_cand_String_static(s);
++            count++;
++            if (static_cast<int>(utf8::length(cand)) == len) {
++                add(std::move(cand), keys);
++            }
++        }
++        chewing_cand_close(s);
++    }
++    if (live->empty()) {
++        return nullptr;
++    }
++    return live;
++}
++
 +void ChewingEngine::commitLearned(InputContext *ic, const std::string &text) {
 +    learn(typed_, text);
 +    finishLive(ic, text);
@@ -280,7 +393,7 @@ index 2e1437d..27ee674 100644
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +590,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +703,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -288,7 +401,7 @@ index 2e1437d..27ee674 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,6 +714,42 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,6 +827,42 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -331,7 +444,7 @@ index 2e1437d..27ee674 100644
      int chewingReturnValue = 0;
      if (keyEvent.key().check(FcitxKey_space)) {
          chewingReturnValue = chewing_handle_Space(ctx);
-@@ -492,6 +771,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +884,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -339,7 +452,7 @@ index 2e1437d..27ee674 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +844,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +957,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -347,7 +460,7 @@ index 2e1437d..27ee674 100644
      updateUI(ic);
  }
  
-@@ -591,6 +872,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +985,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -402,7 +515,7 @@ index 2e1437d..27ee674 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +947,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +1060,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -430,7 +543,7 @@ index 2e1437d..27ee674 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +1002,38 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1115,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
@@ -438,50 +551,28 @@ index 2e1437d..27ee674 100644
      if (ic->inputPanel().candidateList()->empty()) {
          ic->inputPanel().setCandidateList(nullptr);
 +        // SogaKey: no selection window -> list phrases for the typed keys
-+        if (prepareShadow()) {
-+            auto *s = shadow_.get();
-+            if (chewing_cand_open(s) == 0) {
-+                auto live = std::make_unique<CommonCandidateList>();
-+                live->setPageSize(10);
-+                auto learnedList = learnedFor(typed_);
-+                for (const auto &text : learnedList) {
-+                    live->append<LearnedCandidateWord>(this, text);
-+                }
-+                chewing_cand_Enumerate(s);
-+                int index = 0;
-+                while (chewing_cand_hasNext(s) && index < 1500) {
-+                    std::string cand = chewing_cand_String_static(s);
-+                    if (std::find(learnedList.begin(), learnedList.end(),
-+                                  cand) == learnedList.end()) {
-+                        live->append<LiveCandidateWord>(this, std::move(cand),
-+                                                        index);
-+                    }
-+                    index++;
-+                }
-+                chewing_cand_close(s);
-+                if (!live->empty()) {
-+                    live->setGlobalCursorIndex(0);
-+                    ic->inputPanel().setCandidateList(std::move(live));
-+                    liveShown_ = true;
-+                }
-+            }
++        if (auto live = buildLiveList()) {
++            live->setGlobalCursorIndex(0);
++            ic->inputPanel().setCandidateList(std::move(live));
++            liveShown_ = true;
 +        }
      }
  
      updatePreedit(ic);
 diff --git a/src/eim.h b/src/eim.h
-index 334d363..100eefa 100644
+index 334d363..4ca6e06 100644
 --- a/src/eim.h
 +++ b/src/eim.h
-@@ -26,6 +26,7 @@
+@@ -26,6 +26,8 @@
  #include <fcitx/inputmethodengine.h>
  #include <fcitx/instance.h>
  #include <fcitx/text.h>
 +#include <map>
++#include <memory>
  #include <string>
  #include <vector>
  
-@@ -211,7 +212,31 @@ public:
+@@ -211,7 +213,35 @@ public:
  
      ChewingContext *context() { return context_.get(); }
  
@@ -495,6 +586,9 @@ index 334d363..100eefa 100644
 +    bool prepareShadow();
 +    void commitLive(InputContext *ic, int index);
 +    void commitLearned(InputContext *ic, const std::string &text);
++    // commit [text] for the first [keys] typed keys, keep the rest typed
++    void commitSeg(InputContext *ic, const std::string &text, size_t keys);
++    std::unique_ptr<CommonCandidateList> buildLiveList();
 +    // phrases the user chose before for these typed keys, best first
 +    std::vector<std::string> learnedFor(const std::string &typed);
 +    void commitBest(InputContext *ic);
@@ -503,6 +597,7 @@ index 334d363..100eefa 100644
 +    void applyConfig(ChewingContext *ctx, bool shadow);
 +    void syncTyped(int key);
 +    bool replayMatches(const std::string &keys);
++    void replayRaw(const std::string &keys);
 +    void finishLive(InputContext *ic, const std::string &text);
 +    void learn(const std::string &typed, const std::string &text);
 +    void loadLearned();
@@ -513,7 +608,7 @@ index 334d363..100eefa 100644
      bool handleCandidateKeyEvent(const KeyEvent &keyEvent) const;
      void updatePreeditImpl(InputContext *ic);
  
-@@ -221,6 +246,11 @@ private:
+@@ -221,6 +251,11 @@ private:
      Instance *instance_;
      ChewingConfig config_;
      UniqueCPtr<ChewingContext, chewing_delete> context_;
