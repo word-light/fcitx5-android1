@@ -35,16 +35,16 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
 /** Is [text] drawable with the phone's own fonts? (what other apps can show, too) */
 object RareFonts {
     private val paint = Paint()
-    private val cache = object : LinkedHashMap<String, Boolean>(512, 0.75f, true) {
-        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Boolean>) = size > 4000
+    private val cache = object : LinkedHashMap<Int, Boolean>(512, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<Int, Boolean>) = size > 4000
     }
 
     fun drawable(t: String): Boolean {
-        // only Han characters can be "too rare"; leave kana, hangul, emoji, symbols alone
-        val han = t.codePoints().anyMatch {
-            it in 0x3400..0x9FFF || it in 0xF900..0xFAFF || it in 0x20000..0x3FFFF
+        if (t.isEmpty()) return true
+        // Paint.hasGlyph(String) is only true for a single glyph, so test each Han character
+        return t.codePoints().allMatch { cp ->
+            val han = cp in 0x3400..0x9FFF || cp in 0xF900..0xFAFF || cp in 0x20000..0x3FFFF
+            !han || cache.getOrPut(cp) { paint.hasGlyph(String(Character.toChars(cp))) }
         }
-        if (!han) return true
-        return cache.getOrPut(t) { paint.hasGlyph(t) }
     }
 }
