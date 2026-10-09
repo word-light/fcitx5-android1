@@ -96,6 +96,23 @@ jobs:
             echo "word list unavailable, skipping"
           fi
 
+      - name: Build extended Japanese dictionary (Mozc nouns added to Anthy)
+        run: |
+          sudo apt-get install -y --no-install-recommends autoconf automake libtool
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/google/mozc "$RUNNER_TEMP/mozc"
+          git -C "$RUNNER_TEMP/mozc" sparse-checkout set src/data/dictionary_oss
+          cp -r plugin/anthy/src/main/cpp/anthy-cmake/anthy-unicode "$RUNNER_TEMP/anthy-src"
+          cd "$RUNNER_TEMP/anthy-src"
+          python3 "$GITHUB_WORKSPACE/tools/japanese-dict/build_mozc_extra.py" \
+            "$RUNNER_TEMP/mozc/src/data/dictionary_oss/" "$RUNNER_TEMP/anthy-src/" mkworddic/mozc_extra.t 7000
+          sed -i 's#^read @top_srcdir@/mkworddic/extra.t#&\nread @top_srcdir@/mkworddic/mozc_extra.t#' mkworddic/dict.args.in
+          grep -n 'mozc_extra' mkworddic/dict.args.in
+          ./autogen.sh > /dev/null 2>&1
+          ./configure > /dev/null 2>&1
+          make -j"$(nproc)" > /dev/null 2>&1
+          ls -la mkanthydic/anthy.dic
+          cp mkanthydic/anthy.dic "$GITHUB_WORKSPACE/lib/fcitx5/src/main/cpp/prebuilt/anthy-dict/anthy.dic"
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
