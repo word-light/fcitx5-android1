@@ -141,6 +141,10 @@ object SogaJpEngine {
         return built
     }
 
+    suspend fun learn(entries: List<com.kazumaproject.markdownhelperkeyboard.learning.database.LearnEntity>) {
+        learnRepo?.upsertLearnedDataBatch(entries, allowJapaneseWithSymbolsAndNumbers = true)
+    }
+
     /** Conversion candidates for a hiragana reading, best first. */
     suspend fun convert(context: Context, reading: String): List<Candidate> {
         val e = ensure(context)

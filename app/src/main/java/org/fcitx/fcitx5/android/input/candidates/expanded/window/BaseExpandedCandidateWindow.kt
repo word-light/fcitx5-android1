@@ -179,9 +179,15 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
 
     fun bindCandidateUiViewHolder(holder: CandidateViewHolder) {
         holder.itemView.setOnClickListener {
-            fcitx.launchOnReady { it.select(holder.idx) }
+            if (org.fcitx.fcitx5.android.input.japanese.JpComposer.active) {
+                org.fcitx.fcitx5.android.input.japanese.JpComposer.select(holder.idx)
+                windowManager.attachWindow(KeyboardWindow)
+            } else {
+                fcitx.launchOnReady { it.select(holder.idx) }
+            }
         }
         holder.itemView.setOnLongClickListener {
+            if (org.fcitx.fcitx5.android.input.japanese.JpComposer.active) return@setOnLongClickListener true
             inputView.showCandidateActionMenu(holder.idx, holder.candidate.text, holder.ui.root)
             true
         }

@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.input.keyboard.KanaCycle
 import androidx.lifecycle.lifecycleScope
+import com.kazumaproject.markdownhelperkeyboard.learning.session.ConversionLearningSession
+import com.kazumaproject.markdownhelperkeyboard.learning.session.LearningFragment
+import org.fcitx.fcitx5.android.core.CandidateWord
 import timber.log.Timber
 
 object JpComposer {
@@ -30,6 +33,39 @@ object JpComposer {
     /** -1 = showing the plain reading, otherwise the highlighted candidate (space cycles it) */
     private var sel = -1
     private var job: Job? = null
+    private val session = ConversionLearningSession()
+
+    /** page of candidates for the expanded candidate window */
+    fun candidateWords(start: Int, count: Int): Array<CandidateWord> =
+        cands.drop(start).take(count).map { CandidateWord("", it.string, "") }.toTypedArray()
+
+    private fun recordLearning(idx: Int, c: Candidate, usedReading: String, startReading: String, rest: String) {
+        session.beginIfNeeded(startReading)
+        session.record(
+            LearningFragment(
+                reading = usedReading,
+                output = c.commitText,
+                candidateScore = c.score,
+                candidateIndex = idx,
+                leftId = c.leftId,
+                rightId = c.rightId,
+                explicitlySelected = true,
+            )
+        )
+        if (rest.isEmpty()) {
+            val entries = session.finish(learnFirstCandidate = true)
+            val s = service
+            if (entries.isNotEmpty() && s != null) {
+                s.lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        SogaJpEngine.learn(entries)
+                    } catch (e: Throwable) {
+                        Timber.e(e, "saving learning failed")
+                    }
+                }
+            }
+        }
+    }
 
     val active: Boolean get() = enabled && reading.isNotEmpty()
 
@@ -122,6 +158,7 @@ object JpComposer {
         val s = service ?: return
         val used = c.length.toInt().coerceIn(1, reading.length)
         val rest = reading.drop(used)
+        recordLearning(idx, c, reading.take(used), reading, rest)
         s.commitText(c.commitText)
         reading = rest
         sel = -1
@@ -143,6 +180,12 @@ object JpComposer {
             c.commitText + reading.drop(c.length.toInt())
         } else reading
         job?.cancel()
+        if (sel in cands.indices) {
+            val c = cands[sel]
+            val used = c.length.toInt().coerceIn(1, reading.length)
+            recordLearning(sel, c, reading.take(used), reading, reading.drop(used))
+        }
+        session.cancel()
         reading = ""
         cands = emptyList()
         sel = -1
@@ -152,6 +195,7 @@ object JpComposer {
 
     /** the app moved the cursor / focus changed: drop everything without committing */
     fun reset() {
+        session.cancel()
         job?.cancel()
         reading = ""
         cands = emptyList()

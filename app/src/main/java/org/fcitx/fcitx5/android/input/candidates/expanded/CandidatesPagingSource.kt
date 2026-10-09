@@ -18,7 +18,9 @@ class CandidatesPagingSource(val fcitx: FcitxConnection, val total: Int, val off
         val startIndex = params.key ?: offset
         val pageSize = params.loadSize
         Timber.d("getCandidates(offset=$startIndex, limit=$pageSize)")
-        val candidates = fcitx.runOnReady {
+        val candidates = if (org.fcitx.fcitx5.android.input.japanese.JpComposer.active) {
+            org.fcitx.fcitx5.android.input.japanese.JpComposer.candidateWords(startIndex, pageSize)
+        } else fcitx.runOnReady {
             getCandidates(startIndex, pageSize)
         }
         val prevKey = if (startIndex >= pageSize) startIndex - pageSize else null
