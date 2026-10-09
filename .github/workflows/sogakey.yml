@@ -38,6 +38,11 @@ jobs:
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing apply "$GITHUB_WORKSPACE/patches/chewing-sogakey.patch"
           git -C plugin/chewing/src/main/cpp/fcitx5-chewing diff --stat
 
+      - name: Rename Anthy to 日本語 in the input method list
+        run: |
+          sed -i 's/^Name=Anthy$/Name=日本語 (Anthy)/' plugin/anthy/src/main/cpp/fcitx5-anthy/src/anthy.conf.in
+          grep -n '^Name' plugin/anthy/src/main/cpp/fcitx5-anthy/src/anthy.conf.in
+
       - name: Add Traditional Cangjie / Quick tables
         run: |
           P=lib/fcitx5/src/main/cpp/prebuilt
