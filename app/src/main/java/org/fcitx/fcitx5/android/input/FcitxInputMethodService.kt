@@ -903,6 +903,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
         } else {
             Timber.d("handleCursorUpdate: focus out/in")
+            org.fcitx.fcitx5.android.input.japanese.JpComposer.reset()
             resetComposingState()
             // cursor outside composing range, finish composing as-is
             currentInputConnection?.finishComposingText()
@@ -919,6 +920,21 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     // those events need to be filtered.
     // because of https://android.googlesource.com/platform/frameworks/base.git/+/refs/tags/android-11.0.0_r45/core/java/android/view/inputmethod/BaseInputConnection.java#851
     // it's not possible to set cursor inside composing text
+    /** SogaKey: drive composing text + candidate bar from the Japanese composer */
+    fun jpCompose(shown: String, reading: String, candidates: List<String>, updateText: Boolean = true) {
+        if (updateText) {
+            updateComposingText(
+                if (shown.isEmpty()) FormattedText.Empty
+                else FormattedText(
+                    arrayOf(shown),
+                    intArrayOf(org.fcitx.fcitx5.android.core.TextFormatFlag.Underline.flag),
+                    shown.length
+                )
+            )
+        }
+        inputView?.jpCompose(reading, candidates)
+    }
+
     private fun updateComposingText(text: FormattedText) {
         val ic = currentInputConnection ?: return
         val lastSelection = selection.latest

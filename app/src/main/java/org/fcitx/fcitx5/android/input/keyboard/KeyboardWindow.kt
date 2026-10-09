@@ -102,6 +102,10 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     private fun detachCurrentLayout() {
+        org.fcitx.fcitx5.android.input.japanese.JpComposer.apply {
+            if (enabled) flush()
+            enabled = false
+        }
         currentKeyboard?.also {
             it.onDetach()
             keyboardView.removeView(it)
@@ -112,6 +116,8 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
 
     private fun attachLayout(target: String) {
         currentKeyboardName = target
+        org.fcitx.fcitx5.android.input.japanese.JpComposer.enabled =
+            target == JapaneseFlickKeyboard.Name
         currentKeyboard?.let {
             it.keyActionListener = keyActionListener
             it.popupActionListener = popupActionListener
@@ -199,6 +205,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     }
 
     override fun onDetached() {
+        org.fcitx.fcitx5.android.input.japanese.JpComposer.flush()
         currentKeyboard?.let {
             it.onDetach()
             it.keyActionListener = null
