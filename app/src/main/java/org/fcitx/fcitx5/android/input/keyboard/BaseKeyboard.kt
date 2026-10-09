@@ -198,6 +198,7 @@ abstract class BaseKeyboard(
                     }
                 }
             }
+            if (def is FlickKeyDef) setupFlick(this, def)
             def.behaviors.forEach {
                 when (it) {
                     is KeyDef.Behavior.Press -> {
@@ -341,6 +342,87 @@ abstract class BaseKeyboard(
         }
     }
 
+    // ---------- SogaKey: Japanese flick keys ----------
+
+    private var flickSending = false
+
+    private fun sendFlickKeys(keys: String) {
+        flickSending = true
+        try {
+            keys.forEach { onAction(KeyAction.FcitxKeyAction(it.toString())) }
+        } finally {
+            flickSending = false
+        }
+    }
+
+    private fun setupFlick(view: KeyView, def: FlickKeyDef) {
+        view.swipeEnabled = true
+        var downX = 0f
+        var downY = 0f
+        var shown: String? = null
+        val threshold = dp(14f)
+
+        fun cellAt(x: Float, y: Float): FlickCell? {
+            val dx = x - downX
+            val dy = y - downY
+            if (dx * dx + dy * dy < threshold * threshold) return def.center
+            return if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) {
+                if (dx < 0) def.left else def.right
+            } else {
+                if (dy < 0) def.up else def.down
+            }
+        }
+
+        view.onGestureListener = OnGestureListener { v, event ->
+            v as KeyView
+            when (event.type) {
+                GestureType.Down -> {
+                    downX = event.x
+                    downY = event.y
+                    if (!def.modifier) {
+                        shown = def.center.shown
+                        onPopupAction(PopupAction.PreviewAction(v.id, def.center.shown, v.bounds))
+                    }
+                    false
+                }
+                GestureType.Move -> {
+                    if (!def.modifier) {
+                        val c = cellAt(event.x, event.y)
+                        if (c != null && c.shown != shown) {
+                            shown = c.shown
+                            onPopupAction(PopupAction.PreviewUpdateAction(v.id, c.shown))
+                        }
+                    }
+                    false
+                }
+                GestureType.Up -> {
+                    if (def.modifier) {
+                        val last = KanaCycle.lastKana
+                        val next = last?.let { KanaCycle.next(it) }
+                        if (next != null) {
+                            flickSending = true
+                            try {
+                                onAction(KeyAction.SymAction(KeySym(FcitxKeyMapping.FcitxKey_BackSpace)))
+                            } finally {
+                                flickSending = false
+                            }
+                            sendFlickKeys(next.second)
+                            KanaCycle.lastKana = next.first
+                        }
+                    } else {
+                        onPopupAction(PopupAction.DismissAction(v.id))
+                        val c = cellAt(event.x, event.y)
+                        if (c != null && !event.consumed) {
+                            sendFlickKeys(c.keys)
+                            KanaCycle.lastKana = c.shown
+                        }
+                    }
+                    true
+                }
+            }
+        }
+    }
+
     private class TouchTarget(val view: KeyView, val hitRect: Rect)
 
     /**
@@ -460,6 +542,8 @@ abstract class BaseKeyboard(
         action: KeyAction,
         source: KeyActionListener.Source = KeyActionListener.Source.Keyboard
     ) {
+        // any key that is not a flick key ends the "previous kana" for the ゛゜小 key
+        if (!flickSending) KanaCycle.lastKana = null
         keyActionListener?.onKeyAction(action, source)
     }
 

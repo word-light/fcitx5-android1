@@ -72,6 +72,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             HangulKeyboard.Name to HangulKeyboard(context, theme),
             CangjieKeyboard.Name to CangjieKeyboard(context, theme),
             JapaneseKeyboard.Name to JapaneseKeyboard(context, theme),
+            JapaneseFlickKeyboard.Name to JapaneseFlickKeyboard(context, theme),
             NumberKeyboard.Name to NumberKeyboard(context, theme)
         )
     }
@@ -130,7 +131,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
             imeName == ZhuyinKeyboard.ChewingIme -> ZhuyinKeyboard.Name
             imeName == HangulKeyboard.HangulIme -> HangulKeyboard.Name
             CangjieKeyboard.isCangjie(imeName) -> CangjieKeyboard.Name
-            JapaneseKeyboard.isJapanese(imeName) -> JapaneseKeyboard.Name
+            JapaneseKeyboard.isJapanese(imeName) -> JapaneseFlickKeyboard.Name
             else -> name
         }
     }
@@ -138,7 +139,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     private fun isTextLayout(name: String) =
         name == TextKeyboard.Name || name == ZhuyinKeyboard.Name ||
             name == HangulKeyboard.Name || name == CangjieKeyboard.Name ||
-            name == JapaneseKeyboard.Name
+            name == JapaneseKeyboard.Name || name == JapaneseFlickKeyboard.Name
 
     fun switchLayout(to: String, remember: Boolean = true) {
         val target = resolveTextLayout(to.ifEmpty { lastSymbolType })

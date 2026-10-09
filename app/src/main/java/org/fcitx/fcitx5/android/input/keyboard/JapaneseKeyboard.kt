@@ -56,7 +56,8 @@ class JapaneseKeyboard(
             listOf(JpKey("a", "あ", 1f / 9f), JpKey("s", "さ", 1f / 9f), JpKey("d", "だ", 1f / 9f), JpKey("f", "ふ", 1f / 9f), JpKey("g", "が", 1f / 9f), JpKey("h", "は", 1f / 9f), JpKey("j", "じ", 1f / 9f), JpKey("k", "か", 1f / 9f), JpKey("l", "ろ", 1f / 9f)),
             listOf(JpKey("z", "ざ", 0.1f), JpKey("x", "ぁ", 0.1f), JpKey("c", "ち", 0.1f), JpKey("v", "ゔ", 0.1f), JpKey("b", "ば", 0.1f), JpKey("n", "な", 0.1f), JpKey("m", "ま", 0.1f), JpPunctKey("ー", "-", 0.1f), BackspaceKey(percentWidth = 0.16f)),
             listOf(
-                LayoutSwitchKey("符號", "", percentWidth = 0.13f),
+                LayoutSwitchKey("符號", "", percentWidth = 0.11f),
+                LayoutSwitchKey("あ", JapaneseFlickKeyboard.Name, percentWidth = 0.09f),
                 ImagePickerSwitchKey(
                     R.drawable.ic_baseline_tag_faces_24,
                     PickerWindow.Key.Emoji,
