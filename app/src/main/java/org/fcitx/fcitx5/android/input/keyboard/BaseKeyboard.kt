@@ -413,6 +413,10 @@ abstract class BaseKeyboard(
                 }
                 GestureType.Up -> {
                     if (def.modifier) {
+                        if (org.fcitx.fcitx5.android.input.japanese.JpComposer.enabled) {
+                            org.fcitx.fcitx5.android.input.japanese.JpComposer.modifyLast()
+                            return@OnGestureListener true
+                        }
                         val last = KanaCycle.lastKana
                         val next = last?.let { KanaCycle.next(it) }
                         if (next != null) {
@@ -429,6 +433,10 @@ abstract class BaseKeyboard(
                         onPopupAction(PopupAction.DismissAction(v.id))
                         val c = cellOf(focusIdx)
                         if (c != null && !event.consumed) {
+                            if (org.fcitx.fcitx5.android.input.japanese.JpComposer.enabled) {
+                                org.fcitx.fcitx5.android.input.japanese.JpComposer.input(c.shown)
+                                return@OnGestureListener true
+                            }
                             sendFlickKeys(c.keys)
                             KanaCycle.lastKana = c.shown
                         }

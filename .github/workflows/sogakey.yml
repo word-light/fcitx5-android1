@@ -133,7 +133,22 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build APKs
-        run: ./gradlew :app:assembleRelease :plugin:chewing:assembleRelease :plugin:hangul:assembleRelease :plugin:anthy:assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease :plugin:chewing:assembleRelease :plugin:hangul:assembleRelease :plugin:anthy:assembleRelease 2>&1 | tee build.log
+
+      - name: Report compile errors
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import re
+          lines = open('build.log', errors='replace').read().splitlines()
+          errs = [l for l in lines if re.search(r'(^e: |error:|FAILED|What went wrong|Execution failed|Unresolved|> Task .* FAILED)', l)]
+          chunk = errs[:60]
+          for i in range(0, len(chunk), 15):
+              msg = '%0A'.join(x.replace('%', '%25').replace('\r', '')[:400] for x in chunk[i:i+15])
+              print('::error title=build errors %d::%s' % (i // 15, msg))
+          PY
 
       - name: Collect APKs
         run: |

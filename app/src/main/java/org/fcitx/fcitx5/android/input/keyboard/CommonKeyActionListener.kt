@@ -87,8 +87,27 @@ class CommonKeyActionListener :
         }
     }
 
+    /** SogaKey: Japanese composer gets space / backspace / return first; other keys flush it */
+    private fun jpIntercept(action: KeyAction): Boolean {
+        val jp = org.fcitx.fcitx5.android.input.japanese.JpComposer
+        if (!jp.active) return false
+        return when (action) {
+            is SymAction -> when (action.sym.sym) {
+                org.fcitx.fcitx5.android.core.FcitxKeyMapping.FcitxKey_BackSpace -> jp.backspace()
+                org.fcitx.fcitx5.android.core.FcitxKeyMapping.FcitxKey_space -> jp.space()
+                org.fcitx.fcitx5.android.core.FcitxKeyMapping.FcitxKey_Return -> jp.enter()
+                else -> { jp.flush(); false }
+            }
+            is FcitxKeyAction, is CommitAction, is QuickPhraseAction, is UnicodeAction,
+            is PickerSwitchAction -> { jp.flush(); false }
+            else -> false
+        }
+    }
+
     val listener by lazy {
+        org.fcitx.fcitx5.android.input.japanese.JpComposer.service = service
         KeyActionListener { action, _ ->
+            if (jpIntercept(action)) return@KeyActionListener
             when (action) {
                 is FcitxKeyAction -> service.postFcitxJob {
                     sendKey(action.act, action.states.states, action.code)

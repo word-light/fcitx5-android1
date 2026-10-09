@@ -19,6 +19,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.FormattedText
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -334,6 +335,19 @@ class InputView(
         if (focusChangeResetKeyboard || !restarting) {
             windowManager.attachWindow(KeyboardWindow)
         }
+    }
+
+    /** SogaKey: show the Japanese composer's reading / candidates in the bar */
+    fun jpCompose(reading: String, candidates: List<String>) {
+        val ft = if (reading.isEmpty()) FormattedText.Empty
+        else FormattedText(arrayOf(reading), intArrayOf(0), reading.length)
+        preeditEmptyState.updatePreeditEmptyState(clientPreedit = ft)
+        broadcaster.onCandidateUpdate(
+            FcitxEvent.CandidateListEvent.Data(
+                candidates.size,
+                Array(candidates.size) { org.fcitx.fcitx5.android.core.CandidateWord("", candidates[it], "") }
+            )
+        )
     }
 
     override fun onStartHandleFcitxEvent() {
