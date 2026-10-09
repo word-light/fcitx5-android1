@@ -175,6 +175,28 @@ class PopupComponent :
         showingContainerUi[viewId] = ui
     }
 
+    private val showingFlickUi = HashMap<Int, FlickPopupUi>()
+
+    private fun showFlick(viewId: Int, cells: Array<String?>, bounds: Rect) {
+        dismissFlick(viewId)
+        val ui = FlickPopupUi(
+            context, theme, cells, bounds.width(), bounds.height(), popupRadius
+        )
+        // the center cell sits on the key, so the container is positioned at the key's top-left
+        root.addView(
+            ui.root,
+            FrameLayout.LayoutParams(bounds.width(), bounds.height()).apply {
+                leftMargin = bounds.left - rootBounds.left
+                topMargin = bounds.top - rootBounds.top
+            }
+        )
+        showingFlickUi[viewId] = ui
+    }
+
+    private fun dismissFlick(viewId: Int) {
+        showingFlickUi.remove(viewId)?.let { root.removeView(it.root) }
+    }
+
     private fun changeFocus(viewId: Int, x: Float, y: Float): Boolean {
         return showingContainerUi[viewId]?.changeFocus(x, y) ?: false
     }
@@ -184,6 +206,7 @@ class PopupComponent :
     }
 
     private fun dismissPopup(viewId: Int) {
+        dismissFlick(viewId)
         dismissPopupContainer(viewId)
         showingEntryUi[viewId]?.also {
             val timeLeft = it.lastShowTime + hideThreshold - System.currentTimeMillis()
@@ -218,6 +241,7 @@ class PopupComponent :
             job.cancel()
         }
         dismissJobs.clear()
+        showingFlickUi.keys.toList().forEach { dismissFlick(it) }
         // too
         showingContainerUi.forEach { (_, container) ->
             root.removeView(container.root)
@@ -240,6 +264,8 @@ class PopupComponent :
                 is PopupAction.PreviewUpdateAction -> updatePopup(viewId, content)
                 is PopupAction.ShowKeyboardAction -> showKeyboard(viewId, keyboard, bounds)
                 is PopupAction.ShowMenuAction -> showMenu(viewId, menu, bounds)
+                is PopupAction.FlickShowAction -> showFlick(viewId, cells, bounds)
+                is PopupAction.FlickFocusAction -> showingFlickUi[viewId]?.focus(index)
                 is PopupAction.TriggerAction -> outAction = triggerFocused(viewId)
             }
         }

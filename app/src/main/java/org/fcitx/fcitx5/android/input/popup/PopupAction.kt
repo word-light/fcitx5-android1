@@ -46,6 +46,19 @@ sealed class PopupAction {
         var outResult: Boolean = false
     ) : PopupAction()
 
+    /** SogaKey: cross-shaped flick popup. [cells] = center, left, up, right, down (null = none) */
+    data class FlickShowAction(
+        override val viewId: Int,
+        val cells: Array<String?>,
+        val bounds: Rect
+    ) : PopupAction()
+
+    /** SogaKey: highlight cell [index] (0 center, 1 left, 2 up, 3 right, 4 down) */
+    data class FlickFocusAction(
+        override val viewId: Int,
+        val index: Int
+    ) : PopupAction()
+
     data class TriggerAction(
         override val viewId: Int,
         var outAction: KeyAction? = null

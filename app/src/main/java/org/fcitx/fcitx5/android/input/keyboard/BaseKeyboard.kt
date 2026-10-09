@@ -362,16 +362,28 @@ abstract class BaseKeyboard(
         var shown: String? = null
         val threshold = dp(14f)
 
-        fun cellAt(x: Float, y: Float): FlickCell? {
+        // 0 center, 1 left, 2 up, 3 right, 4 down
+        fun indexAt(x: Float, y: Float): Int {
             val dx = x - downX
             val dy = y - downY
-            if (dx * dx + dy * dy < threshold * threshold) return def.center
+            if (dx * dx + dy * dy < threshold * threshold) return 0
             return if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) {
-                if (dx < 0) def.left else def.right
+                if (dx < 0) 1 else 3
             } else {
-                if (dy < 0) def.up else def.down
+                if (dy < 0) 2 else 4
             }
         }
+
+        fun cellOf(i: Int): FlickCell? = when (i) {
+            0 -> def.center
+            1 -> def.left
+            2 -> def.up
+            3 -> def.right
+            else -> def.down
+        }
+
+        fun cellAt(x: Float, y: Float): FlickCell? = cellOf(indexAt(x, y))
+        var focusIdx = 0
 
         view.onGestureListener = OnGestureListener { v, event ->
             v as KeyView
@@ -381,16 +393,20 @@ abstract class BaseKeyboard(
                     downY = event.y
                     if (!def.modifier) {
                         shown = def.center.shown
-                        onPopupAction(PopupAction.PreviewAction(v.id, def.center.shown, v.bounds))
+                        focusIdx = 0
+                        val cells = Array(5) { cellOf(it)?.shown }
+                        onPopupAction(PopupAction.FlickShowAction(v.id, cells, v.bounds))
                     }
                     false
                 }
                 GestureType.Move -> {
                     if (!def.modifier) {
-                        val c = cellAt(event.x, event.y)
-                        if (c != null && c.shown != shown) {
-                            shown = c.shown
-                            onPopupAction(PopupAction.PreviewUpdateAction(v.id, c.shown))
+                        val i = indexAt(event.x, event.y)
+                        // keep the previous focus when the flick points at an empty direction
+                        if (i != focusIdx && cellOf(i) != null) {
+                            focusIdx = i
+                            shown = cellOf(i)?.shown
+                            onPopupAction(PopupAction.FlickFocusAction(v.id, i))
                         }
                     }
                     false
@@ -411,7 +427,7 @@ abstract class BaseKeyboard(
                         }
                     } else {
                         onPopupAction(PopupAction.DismissAction(v.id))
-                        val c = cellAt(event.x, event.y)
+                        val c = cellOf(focusIdx)
                         if (c != null && !event.consumed) {
                             sendFlickKeys(c.keys)
                             KanaCycle.lastKana = c.shown
