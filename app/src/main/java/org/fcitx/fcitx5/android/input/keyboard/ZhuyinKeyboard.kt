@@ -45,9 +45,8 @@ class ZhuyinKey(
         Behavior.Press(KeyAction.FcitxKeyAction(key)),
         Behavior.Swipe(KeyAction.CommitAction(alt))
     ),
-    arrayOf(
-        Popup.Preview(zhuyin)
-    )
+    // keys with a swipe symbol show the floating cross instead of the plain preview
+    if (alt == null) arrayOf(Popup.Preview(zhuyin)) else emptyArray()
 )
 
 /** Commits full-width punctuation directly, bypassing Chewing's key mapping. */

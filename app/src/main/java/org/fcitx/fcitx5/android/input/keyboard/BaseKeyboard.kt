@@ -224,7 +224,29 @@ abstract class BaseKeyboard(
                         swipeThresholdX = disabledSwipeThreshold
                         swipeThresholdY = inputSwipeThreshold
                         val oldOnGestureListener = onGestureListener ?: OnGestureListener.Empty
+                        // SogaKey: show a floating cross (like the Japanese flick keys) with the
+                        // symbol / digit that this swipe will type
+                        val hintApp = def.appearance as? KeyDef.Appearance.AltText
                         onGestureListener = OnGestureListener { view, event ->
+                            if (hintApp != null && popupOnKeyPress && swipeSymbolDirection != SwipeSymbolDirection.Disabled) {
+                                view as KeyView
+                                val idx = if (swipeSymbolDirection == SwipeSymbolDirection.Up) 2 else 4
+                                when (event.type) {
+                                    GestureType.Down -> {
+                                        val cells = arrayOfNulls<String>(5)
+                                        cells[0] = hintApp.displayText
+                                        cells[idx] = hintApp.altText
+                                        onPopupAction(PopupAction.FlickShowAction(view.id, cells, view.bounds))
+                                    }
+                                    GestureType.Move -> onPopupAction(
+                                        PopupAction.FlickFocusAction(
+                                            view.id,
+                                            if (swipeSymbolDirection.checkY(event.totalY)) idx else 0
+                                        )
+                                    )
+                                    GestureType.Up -> onPopupAction(PopupAction.DismissAction(view.id))
+                                }
+                            }
                             when (event.type) {
                                 GestureType.Up -> {
                                     if (!event.consumed && swipeSymbolDirection.checkY(event.totalY)) {
