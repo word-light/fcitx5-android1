@@ -5,7 +5,7 @@ name: Build SogaKey
 
 on:
   push:
-    branches: [master]
+    branches: [master, jp-engine]
     paths-ignore:
       - 'tools/**'
       - '.github/workflows/chewing-test.yml'
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sogakey
+  group: sogakey-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -151,6 +151,7 @@ jobs:
           path: out/
 
       - name: Publish "latest" release
+        if: github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
