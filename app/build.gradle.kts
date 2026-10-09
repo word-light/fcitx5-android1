@@ -116,6 +116,9 @@ dependencies {
     implementation(libs.flexbox)
     implementation(libs.dependency)
     implementation(libs.timber)
+    // SogaKey: vendored Sumire (MIT) Japanese converter dependencies
+    implementation("javax.inject:javax.inject:1")
+    implementation("com.google.code.gson:gson:2.13.2")
     implementation(libs.splitties.bitflags)
     implementation(libs.splitties.dimensions)
     implementation(libs.splitties.resources)
