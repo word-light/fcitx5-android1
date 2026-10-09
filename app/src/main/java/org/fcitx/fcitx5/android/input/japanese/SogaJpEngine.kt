@@ -10,12 +10,12 @@ import com.kazumaproject.markdownhelperkeyboard.SogaJpDatabase
 import com.kazumaproject.markdownhelperkeyboard.converter.ConnectionMatrix
 import com.kazumaproject.markdownhelperkeyboard.converter.bitset.SuccinctBitVector
 import com.kazumaproject.markdownhelperkeyboard.converter.candidate.Candidate
-import com.kazumaproject.markdownhelperkeyboard.converter.dictionary.TokenArray
+import com.kazumaproject.dictionary.TokenArray
 import com.kazumaproject.markdownhelperkeyboard.converter.engine.EnglishEngine
 import com.kazumaproject.markdownhelperkeyboard.converter.engine.KanaKanjiEngine
 import com.kazumaproject.markdownhelperkeyboard.converter.graph.GraphBuilder
-import com.kazumaproject.markdownhelperkeyboard.converter.louds.LOUDS
-import com.kazumaproject.markdownhelperkeyboard.converter.louds.with_term_id.LOUDSWithTermId
+import com.kazumaproject.Louds.LOUDS
+import com.kazumaproject.Louds.with_term_id.LOUDSWithTermId
 import com.kazumaproject.markdownhelperkeyboard.converter.mozc.MozcNodeAttributeTableReader
 import com.kazumaproject.markdownhelperkeyboard.converter.mozc.MozcSegmenter
 import com.kazumaproject.markdownhelperkeyboard.converter.mozc.MozcSegmenterDataReader
