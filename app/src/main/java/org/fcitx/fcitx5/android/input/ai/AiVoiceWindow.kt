@@ -293,7 +293,7 @@ class AiVoiceWindow : InputWindow.ExtendedInputWindow<AiVoiceWindow>() {
         }
         val main = if (r.translation.isNotEmpty()) {
             row(bigButton("輸入原文", true) { commit(r.text) } to 1f,
-                bigButton(r.translationLabel, true) { commit(r.translation) } to 1f)
+                bigButton("輸入" + r.translationLabel.removePrefix("翻成"), true) { commit(r.translation) } to 1f)
         } else {
             row(bigButton("輸入原文", true) { commit(r.text) } to 1f)
         }
@@ -314,6 +314,8 @@ class AiVoiceWindow : InputWindow.ExtendedInputWindow<AiVoiceWindow>() {
     }
 
     private fun translateExtra(r: VoiceResult, target: String) {
+        // stop any still-running recognition / refine so it cannot overwrite the translation
+        job?.cancel()
         statusText.text = "翻成${target}…"
         setContent(statusText, spinner)
         setActions(row(bigButton("✕ 取消", false) {
