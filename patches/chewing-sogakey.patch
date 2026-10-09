@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..b0ce80d 100644
+index 2e1437d..e41a541 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -28,7 +28,10 @@
@@ -91,7 +91,7 @@ index 2e1437d..b0ce80d 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +391,348 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +391,357 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -117,6 +117,15 @@ index 2e1437d..b0ce80d 100644
 +    }
 +}
 +
++// SogaKey: a remembered space is the first tone, everything else a normal key.
++static void feedKey(ChewingContext *c, char key) {
++    if (key == ' ') {
++        chewing_handle_Space(c);
++    } else {
++        chewing_handle_Default(c, static_cast<unsigned char>(key));
++    }
++}
++
 +// SogaKey: re-type the remembered keys into the shadow context and report
 +// whether it reaches exactly the same state as the real context.
 +void ChewingEngine::replayRaw(const std::string &keys) {
@@ -126,7 +135,7 @@ index 2e1437d..b0ce80d 100644
 +    chewing_clean_bopomofo_buf(s);
 +    chewing_Reset(s);
 +    for (char c : keys) {
-+        chewing_handle_Default(s, static_cast<unsigned char>(c));
++        feedKey(s, c);
 +    }
 +}
 +
@@ -299,7 +308,7 @@ index 2e1437d..b0ce80d 100644
 +    chewing_Reset(ctx);
 +    clearTyped();
 +    for (char c : rest) {
-+        chewing_handle_Default(ctx, static_cast<unsigned char>(c));
++        feedKey(ctx, c);
 +    }
 +    if (!safeChewing_buffer_String(ctx).empty() ||
 +        !safeChewing_bopomofo_String(ctx).empty()) {
@@ -441,7 +450,7 @@ index 2e1437d..b0ce80d 100644
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +742,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +751,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -449,12 +458,15 @@ index 2e1437d..b0ce80d 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,6 +866,53 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,8 +875,61 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
 +    // SogaKey: Space takes the first live candidate (like Gboard)
-+    if (liveActive() && keyEvent.key().check(FcitxKey_space)) {
++    // A syllable still waiting for its tone takes Space as the first tone
++    // (一聲); only afterwards does Space pick the first candidate.
++    if (liveActive() && keyEvent.key().check(FcitxKey_space) &&
++        chewing_bopomofo_Check(ctx) == 0) {
 +        keyEvent.filterAndAccept();
 +        if (auto list = buildLiveList()) {
 +            list->candidateFromAll(0).select(ic);
@@ -502,8 +514,13 @@ index 2e1437d..b0ce80d 100644
 +    int typedKey = -1;
      int chewingReturnValue = 0;
      if (keyEvent.key().check(FcitxKey_space)) {
++        if (chewing_bopomofo_Check(ctx) != 0) {
++            typedKey = ' ';
++        }
          chewingReturnValue = chewing_handle_Space(ctx);
-@@ -492,6 +934,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+     } else if (keyEvent.key().check(FcitxKey_Tab)) {
+         chewingReturnValue = chewing_handle_Tab(ctx);
+@@ -492,6 +949,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -511,7 +528,7 @@ index 2e1437d..b0ce80d 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +1007,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +1022,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -519,7 +536,7 @@ index 2e1437d..b0ce80d 100644
      updateUI(ic);
  }
  
-@@ -591,6 +1035,54 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +1050,55 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -567,6 +584,7 @@ index 2e1437d..b0ce80d 100644
 +    case '4': return "ˋ";
 +    case '6': return "ˊ";
 +    case '7': return "˙";
++    case ' ': return "ˉ";
 +    default: return nullptr;
 +    }
 +}
@@ -574,7 +592,7 @@ index 2e1437d..b0ce80d 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +1110,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +1126,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -602,7 +620,7 @@ index 2e1437d..b0ce80d 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +1165,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1181,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
