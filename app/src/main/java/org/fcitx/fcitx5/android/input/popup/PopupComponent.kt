@@ -180,15 +180,16 @@ class PopupComponent :
     private fun showFlick(viewId: Int, cells: Array<String?>, bounds: Rect) {
         dismissFlick(viewId)
         val ui = FlickPopupUi(
-            context, theme, cells, bounds.width(), bounds.height(), popupRadius
+            context, theme, cells, bounds.width(), bounds.height(), popupRadius,
+            bounds.left - rootBounds.left, bounds.top - rootBounds.top
         )
-        // the center cell sits on the key, so the container is positioned at the key's top-left
+        // full-size container: the popup root clips children to their own bounds,
+        // so cells outside the key would otherwise be invisible
         root.addView(
             ui.root,
-            FrameLayout.LayoutParams(bounds.width(), bounds.height()).apply {
-                leftMargin = bounds.left - rootBounds.left
-                topMargin = bounds.top - rootBounds.top
-            }
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
         )
         showingFlickUi[viewId] = ui
     }

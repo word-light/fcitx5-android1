@@ -22,7 +22,9 @@ class FlickPopupUi(
     cells: Array<String?>,
     private val cellW: Int,
     private val cellH: Int,
-    private val radius: Float
+    private val radius: Float,
+    private val keyLeft: Int,
+    private val keyTop: Int
 ) {
     val root = FrameLayout(ctx).apply {
         clipChildren = false
@@ -46,8 +48,8 @@ class FlickPopupUi(
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
             root.addView(tv, FrameLayout.LayoutParams(cellW, cellH).apply {
-                leftMargin = dx[i] * cellW
-                topMargin = dy[i] * cellH
+                leftMargin = keyLeft + dx[i] * cellW
+                topMargin = keyTop + dy[i] * cellH
             })
             views[i] = tv
         }
