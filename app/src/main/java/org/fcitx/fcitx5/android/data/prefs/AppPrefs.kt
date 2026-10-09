@@ -182,7 +182,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val langSwitchKeyBehavior = enumList(
             R.string.lang_switch_key_behavior,
             "lang_switch_key_behavior",
-            LangSwitchBehavior.Enumerate
+            LangSwitchBehavior.ToggleActivate
         ) { showLangSwitchKey.getValue() }
 
         val keyboardHeightPercent: ManagedPreference.PInt
