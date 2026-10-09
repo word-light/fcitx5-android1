@@ -111,7 +111,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build APKs
-        run: ./gradlew :app:assembleRelease :plugin:chewing:assembleRelease :plugin:hangul:assembleRelease
+        run: ./gradlew :app:assembleRelease :plugin:chewing:assembleRelease :plugin:hangul:assembleRelease :plugin:anthy:assembleRelease
 
       - name: Collect APKs
         run: |
@@ -119,6 +119,7 @@ jobs:
           cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" out/1-SogaKey-main.apk
           cp "$(ls plugin/chewing/build/outputs/apk/release/*.apk | head -1)" out/2-SogaKey-zhuyin-plugin.apk
           cp "$(ls plugin/hangul/build/outputs/apk/release/*.apk | head -1)" out/3-SogaKey-korean-plugin.apk
+          cp "$(ls plugin/anthy/build/outputs/apk/release/*.apk | head -1)" out/4-SogaKey-japanese-plugin.apk
           ls -la out
 
       - name: Upload artifact
@@ -134,5 +135,5 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest out/*.apk \
             --title "SogaKey 最新版（第 ${{ github.run_number }} 版）" \
-            --notes "安裝順序：1 主程式 → 2 注音外掛 → 3 韓文外掛（不用韓文可略過）。更新時直接安裝新版覆蓋即可。" \
+            --notes "安裝順序：1 主程式 → 2 注音外掛 → 3 韓文外掛、4 日文外掛（不用可略過）。更新時直接安裝新版覆蓋即可。" \
             --latest

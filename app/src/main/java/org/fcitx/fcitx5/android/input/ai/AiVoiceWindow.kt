@@ -297,11 +297,44 @@ class AiVoiceWindow : InputWindow.ExtendedInputWindow<AiVoiceWindow>() {
         } else {
             row(bigButton("輸入原文", true) { commit(r.text) } to 1f)
         }
+        // extra translation targets (everything except the language that was spoken)
+        val targets = listOf("英文", "日文", "韓文", "中文").filter {
+            val src = when (r.sourceLang) { "zh" -> "中文"; "en" -> "英文"; "ko" -> "韓文"; else -> "" }
+            it != src && it != (r.target ?: if (r.sourceLang == "zh") "英文" else "中文")
+        }
+        val extra = row(*targets.map<String, Pair<View, Float>> { t ->
+            bigButton("翻$t", false) { translateExtra(r, t) } to 1f
+        }.toTypedArray())
         setActions(
             main,
+            extra,
             row(bigButton("🎤 重說", false) { startListening() } to 1f,
                 bigButton("✕ 取消", false) { backToKeyboard() } to 1f)
         )
+    }
+
+    private fun translateExtra(r: VoiceResult, target: String) {
+        statusText.text = "翻成${target}…"
+        setContent(statusText, spinner)
+        setActions(row(bigButton("✕ 取消", false) {
+            job?.cancel()
+            showResult(r)
+        } to 1f))
+        job = service.lifecycleScope.launch {
+            try {
+                val t = GeminiClient.translateTo(
+                    AiVoicePrefs.apiKey(context), AiVoicePrefs.model(context), r.text, target
+                )
+                if (t.isEmpty()) showError("翻譯沒有結果，請再試一次")
+                else showResult(r.copy(translation = t, target = target))
+            } catch (e: AiVoiceException) {
+                showError(e.message ?: "發生錯誤")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showError("發生錯誤：${e.message ?: e.javaClass.simpleName}")
+            }
+        }
     }
 
     private fun showError(message: String) {

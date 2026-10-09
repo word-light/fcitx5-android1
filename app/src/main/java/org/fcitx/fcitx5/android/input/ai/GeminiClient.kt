@@ -20,11 +20,13 @@ data class VoiceResult(
     /** "zh", "en", "ko" or "other" */
     val sourceLang: String,
     val text: String,
-    val translation: String
+    val translation: String,
+    /** Set when the user asked for a specific target language ("英文", "日文", "韓文", "中文"). */
+    val target: String? = null
 ) {
     /** Label for the translate button, e.g. "翻成英文". */
     val translationLabel: String
-        get() = if (sourceLang == "zh") "翻成英文" else "翻成中文"
+        get() = "翻成" + (target ?: if (sourceLang == "zh") "英文" else "中文")
 }
 
 class AiVoiceException(message: String, val code: Int = 0) : Exception(message)
@@ -183,6 +185,60 @@ object GeminiClient {
                 val resp = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
                 if (code !in 200..299) throw AiVoiceException(describeError(code, resp), code)
                 parse(resp)
+            } catch (e: AiVoiceException) {
+                throw e
+            } catch (e: IOException) {
+                throw AiVoiceException("連線失敗：${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+    /** Translate already-recognised text into [target] ("英文", "日文", "韓文" or "中文"). */
+    suspend fun translateTo(apiKey: String, model: String, text: String, target: String): String {
+        val prompt = "把下面這段話翻成自然、口語的${target}" +
+                (if (target == "中文") "（台灣慣用的繁體中文）" else "") +
+                "。只輸出 JSON：{\"translation\":\"...\"}，不要加說明。\n\n" + text
+        val raw = try {
+            generateText(apiKey, FAST_TEXT_MODEL, prompt)
+        } catch (e: AiVoiceException) {
+            if (model == FAST_TEXT_MODEL) throw e
+            generateText(apiKey, model, prompt)
+        }
+        return runCatching { JSONObject(raw).optString("translation").trim() }.getOrDefault(raw)
+    }
+
+    private suspend fun generateText(apiKey: String, model: String, prompt: String): String =
+        withContext(Dispatchers.IO) {
+            val body = JSONObject().apply {
+                put("contents", JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                }))
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.2)
+                    put("responseMimeType", "application/json")
+                    put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                })
+            }.toString()
+            val url = URL(ENDPOINT + URLEncoder.encode(model, "UTF-8") + ":generateContent")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10_000
+                readTimeout = 20_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                setRequestProperty("x-goog-api-key", apiKey)
+            }
+            try {
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val resp = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+                if (code !in 200..299) throw AiVoiceException(describeError(code, resp), code)
+                JSONObject(resp).optJSONArray("candidates")?.optJSONObject(0)
+                    ?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)
+                    ?.optString("text")?.trim().orEmpty()
             } catch (e: AiVoiceException) {
                 throw e
             } catch (e: IOException) {
