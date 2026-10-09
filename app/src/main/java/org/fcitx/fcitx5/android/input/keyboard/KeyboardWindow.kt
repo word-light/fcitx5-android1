@@ -117,7 +117,7 @@ class KeyboardWindow : InputWindow.SimpleInputWindow<KeyboardWindow>(), Essentia
     private fun attachLayout(target: String) {
         currentKeyboardName = target
         org.fcitx.fcitx5.android.input.japanese.JpComposer.enabled =
-            target == JapaneseFlickKeyboard.Name
+            target == JapaneseFlickKeyboard.Name || target == JapaneseKeyboard.Name
         currentKeyboard?.let {
             it.keyActionListener = keyActionListener
             it.popupActionListener = popupActionListener

@@ -28,6 +28,7 @@ object JpComposer {
     var service: FcitxInputMethodService? = null
 
     private var reading = ""
+    private var pending = ""
     private var cands: List<Candidate> = emptyList()
 
     /** -1 = showing the plain reading, otherwise the highlighted candidate (space cycles it) */
@@ -67,7 +68,7 @@ object JpComposer {
         }
     }
 
-    val active: Boolean get() = enabled && reading.isNotEmpty()
+    val active: Boolean get() = enabled && (reading.isNotEmpty() || pending.isNotEmpty())
 
     private fun render() {
         val s = service ?: return
@@ -75,7 +76,7 @@ object JpComposer {
             val c = cands[sel]
             c.commitText + reading.drop(c.length.toInt())
         } else reading
-        s.jpCompose(shown, reading, cands.map { it.string })
+        s.jpCompose(shown + pending, reading + pending, cands.map { it.string })
     }
 
     private fun convert() {
@@ -112,6 +113,26 @@ object JpComposer {
         convert()
     }
 
+    private fun finalizePending() {
+        if (pending.isEmpty()) return
+        reading += if (pending == "n") "ん" else pending
+        pending = ""
+    }
+
+    /** a romaji key from the ABC layout */
+    fun inputLatin(ch: Char) {
+        val (kana, rest) = Romaji.feed(pending + ch.lowercaseChar())
+        pending = rest
+        if (kana.isNotEmpty()) {
+            reading += kana
+            sel = -1
+            render()
+            convert()
+        } else {
+            render()
+        }
+    }
+
     /** ゛゜小: cycle the last kana */
     fun modifyLast() {
         val last = reading.lastOrNull()?.toString() ?: return
@@ -125,6 +146,11 @@ object JpComposer {
     /** @return true when the key was consumed */
     fun backspace(): Boolean {
         if (!active) return false
+        if (pending.isNotEmpty()) {
+            pending = pending.dropLast(1)
+            render()
+            return true
+        }
         if (sel >= 0) {
             sel = -1
             render()
@@ -139,6 +165,11 @@ object JpComposer {
     /** space: highlight the next candidate */
     fun space(): Boolean {
         if (!active) return false
+        if (pending.isNotEmpty()) {
+            val before = reading
+            finalizePending()
+            if (reading != before) { sel = -1; render(); convert(); return true }
+        }
         if (cands.isEmpty()) return true
         sel = if (sel < 0) 0 else (sel + 1) % cands.size
         render()
@@ -156,6 +187,7 @@ object JpComposer {
     fun select(idx: Int) {
         val c = cands.getOrNull(idx) ?: return
         val s = service ?: return
+        finalizePending()
         val used = c.length.toInt().coerceIn(1, reading.length)
         val rest = reading.drop(used)
         recordLearning(idx, c, reading.take(used), reading, rest)
@@ -174,6 +206,7 @@ object JpComposer {
     /** commit the current selection (or the plain reading) and clear */
     fun flush() {
         val s = service ?: return
+        finalizePending()
         if (reading.isEmpty()) return
         val text = if (sel in cands.indices) {
             val c = cands[sel]
@@ -195,6 +228,7 @@ object JpComposer {
 
     /** the app moved the cursor / focus changed: drop everything without committing */
     fun reset() {
+        pending = ""
         session.cancel()
         job?.cancel()
         reading = ""

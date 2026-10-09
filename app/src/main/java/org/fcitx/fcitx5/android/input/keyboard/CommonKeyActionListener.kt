@@ -90,6 +90,11 @@ class CommonKeyActionListener :
     /** SogaKey: Japanese composer gets space / backspace / return first; other keys flush it */
     private fun jpIntercept(action: KeyAction): Boolean {
         val jp = org.fcitx.fcitx5.android.input.japanese.JpComposer
+        if (jp.enabled && action is FcitxKeyAction && action.act.length == 1) {
+            val ch = action.act[0]
+            if (ch.isLetter() && ch.code < 128) { jp.inputLatin(ch); return true }
+            if (ch in "-,.?!/[]") { jp.inputLatin(ch); return true }
+        }
         if (!jp.active) return false
         return when (action) {
             is SymAction -> when (action.sym.sym) {
