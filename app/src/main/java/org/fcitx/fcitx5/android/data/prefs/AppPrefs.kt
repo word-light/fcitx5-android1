@@ -173,7 +173,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val spaceKeyLongPressBehavior = enumList(
             R.string.space_long_press_behavior,
             "space_long_press_behavior",
-            SpaceLongPressBehavior.None
+            SpaceLongPressBehavior.ToggleActivate
         )
         val spaceSwipeMoveCursor =
             switch(R.string.space_swipe_move_cursor, "space_swipe_move_cursor", true)
@@ -182,7 +182,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val langSwitchKeyBehavior = enumList(
             R.string.lang_switch_key_behavior,
             "lang_switch_key_behavior",
-            LangSwitchBehavior.ToggleActivate
+            LangSwitchBehavior.Enumerate
         ) { showLangSwitchKey.getValue() }
 
         val keyboardHeightPercent: ManagedPreference.PInt
