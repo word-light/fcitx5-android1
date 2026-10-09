@@ -23,16 +23,27 @@ class ZhuyinKey(
     zhuyin: String,
     key: String,
     percentWidth: Float,
-    textSize: Float = 22f
+    textSize: Float = 22f,
+    /** typed directly (bypassing Chewing) when the key is swiped; also drawn as a small hint */
+    alt: String? = null
 ) : KeyDef(
-    Appearance.Text(
+    if (alt == null) Appearance.Text(
         displayText = zhuyin,
         textSize = textSize,
         percentWidth = percentWidth,
         border = Border.On
+    ) else Appearance.AltText(
+        displayText = zhuyin,
+        altText = alt,
+        textSize = textSize,
+        percentWidth = percentWidth,
+        border = Border.On
     ),
-    setOf(
+    if (alt == null) setOf(
         Behavior.Press(KeyAction.FcitxKeyAction(key))
+    ) else setOf(
+        Behavior.Press(KeyAction.FcitxKeyAction(key)),
+        Behavior.Swipe(KeyAction.CommitAction(alt))
     ),
     arrayOf(
         Popup.Preview(zhuyin)
@@ -79,33 +90,33 @@ class ZhuyinKeyboard(
 
         val Layout: List<List<KeyDef>> = listOf(
             listOf(
-                ZhuyinKey("ㄅ", "1", W11), ZhuyinKey("ㄉ", "2", W11),
-                ZhuyinKey("ˇ", "3", W11, 24f), ZhuyinKey("ˋ", "4", W11, 24f),
-                ZhuyinKey("ㄓ", "5", W11), ZhuyinKey("ˊ", "6", W11, 24f),
-                ZhuyinKey("˙", "7", W11, 24f), ZhuyinKey("ㄚ", "8", W11),
-                ZhuyinKey("ㄞ", "9", W11), ZhuyinKey("ㄢ", "0", W11),
-                ZhuyinKey("ㄦ", "-", W11)
+                ZhuyinKey("ㄅ", "1", W11, alt = "1"), ZhuyinKey("ㄉ", "2", W11, alt = "2"),
+                ZhuyinKey("ˇ", "3", W11, 24f, alt = "3"), ZhuyinKey("ˋ", "4", W11, 24f, alt = "4"),
+                ZhuyinKey("ㄓ", "5", W11, alt = "5"), ZhuyinKey("ˊ", "6", W11, 24f, alt = "6"),
+                ZhuyinKey("˙", "7", W11, 24f, alt = "7"), ZhuyinKey("ㄚ", "8", W11, alt = "8"),
+                ZhuyinKey("ㄞ", "9", W11, alt = "9"), ZhuyinKey("ㄢ", "0", W11, alt = "0"),
+                ZhuyinKey("ㄦ", "-", W11, alt = "-")
             ),
             listOf(
-                ZhuyinKey("ㄆ", "q", W10), ZhuyinKey("ㄊ", "w", W10),
-                ZhuyinKey("ㄍ", "e", W10), ZhuyinKey("ㄐ", "r", W10),
-                ZhuyinKey("ㄔ", "t", W10), ZhuyinKey("ㄗ", "y", W10),
-                ZhuyinKey("ㄧ", "u", W10), ZhuyinKey("ㄛ", "i", W10),
-                ZhuyinKey("ㄟ", "o", W10), ZhuyinKey("ㄣ", "p", W10)
+                ZhuyinKey("ㄆ", "q", W10, alt = "！"), ZhuyinKey("ㄊ", "w", W10, alt = "？"),
+                ZhuyinKey("ㄍ", "e", W10, alt = "～"), ZhuyinKey("ㄐ", "r", W10, alt = "…"),
+                ZhuyinKey("ㄔ", "t", W10, alt = "；"), ZhuyinKey("ㄗ", "y", W10, alt = "："),
+                ZhuyinKey("ㄧ", "u", W10, alt = "「"), ZhuyinKey("ㄛ", "i", W10, alt = "」"),
+                ZhuyinKey("ㄟ", "o", W10, alt = "（"), ZhuyinKey("ㄣ", "p", W10, alt = "）")
             ),
             listOf(
-                ZhuyinKey("ㄇ", "a", W10), ZhuyinKey("ㄋ", "s", W10),
-                ZhuyinKey("ㄎ", "d", W10), ZhuyinKey("ㄑ", "f", W10),
-                ZhuyinKey("ㄕ", "g", W10), ZhuyinKey("ㄘ", "h", W10),
-                ZhuyinKey("ㄨ", "j", W10), ZhuyinKey("ㄜ", "k", W10),
-                ZhuyinKey("ㄠ", "l", W10), ZhuyinKey("ㄤ", ";", W10)
+                ZhuyinKey("ㄇ", "a", W10, alt = "@"), ZhuyinKey("ㄋ", "s", W10, alt = "#"),
+                ZhuyinKey("ㄎ", "d", W10, alt = "$"), ZhuyinKey("ㄑ", "f", W10, alt = "%"),
+                ZhuyinKey("ㄕ", "g", W10, alt = "&"), ZhuyinKey("ㄘ", "h", W10, alt = "*"),
+                ZhuyinKey("ㄨ", "j", W10, alt = "+"), ZhuyinKey("ㄜ", "k", W10, alt = "="),
+                ZhuyinKey("ㄠ", "l", W10, alt = "/"), ZhuyinKey("ㄤ", ";", W10, alt = "\\")
             ),
             listOf(
-                ZhuyinKey("ㄈ", "z", W4), ZhuyinKey("ㄌ", "x", W4),
-                ZhuyinKey("ㄏ", "c", W4), ZhuyinKey("ㄒ", "v", W4),
-                ZhuyinKey("ㄖ", "b", W4), ZhuyinKey("ㄙ", "n", W4),
-                ZhuyinKey("ㄩ", "m", W4), ZhuyinKey("ㄝ", ",", W4),
-                ZhuyinKey("ㄡ", ".", W4), ZhuyinKey("ㄥ", "/", W4),
+                ZhuyinKey("ㄈ", "z", W4, alt = "_"), ZhuyinKey("ㄌ", "x", W4, alt = "\'"),
+                ZhuyinKey("ㄏ", "c", W4, alt = "\""), ZhuyinKey("ㄒ", "v", W4, alt = "`"),
+                ZhuyinKey("ㄖ", "b", W4, alt = "^"), ZhuyinKey("ㄙ", "n", W4, alt = "|"),
+                ZhuyinKey("ㄩ", "m", W4, alt = "<"), ZhuyinKey("ㄝ", ",", W4, alt = ">"),
+                ZhuyinKey("ㄡ", ".", W4, alt = "["), ZhuyinKey("ㄥ", "/", W4, alt = "]"),
                 BackspaceKey(percentWidth = 0.15f)
             ),
             listOf(
