@@ -1,8 +1,8 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..e41a541 100644
+index 2e1437d..edcf20d 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
-@@ -28,7 +28,10 @@
+@@ -28,11 +28,15 @@
  #include <fcitx/text.h>
  #include <fcitx/userinterface.h>
  #include <fcitx/userinterfacemanager.h>
@@ -13,7 +13,12 @@ index 2e1437d..e41a541 100644
  #include <memory>
  #include <stdexcept>
  #include <string>
-@@ -43,7 +46,7 @@ namespace fcitx {
+ #include <string_view>
++#include <unordered_set>
+ #include <utility>
+ #include <vector>
+ 
+@@ -43,7 +47,7 @@ namespace fcitx {
  
  namespace {
  
@@ -22,7 +27,7 @@ index 2e1437d..e41a541 100644
  
  constexpr auto builtin_selectkeys = std::to_array<std::string_view>({
      "1234567890",
-@@ -118,6 +121,53 @@ private:
+@@ -118,6 +122,53 @@ private:
      int index_;
  };
  
@@ -76,7 +81,7 @@ index 2e1437d..e41a541 100644
  class ChewingCandidateList : public CandidateList,
                               public PageableCandidateList,
                               public CursorMovableCandidateList,
-@@ -316,7 +366,13 @@ void ChewingEngine::reloadConfig() {
+@@ -316,7 +367,13 @@ void ChewingEngine::reloadConfig() {
  }
  
  void ChewingEngine::populateConfig() {
@@ -91,7 +96,7 @@ index 2e1437d..e41a541 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +391,357 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +392,478 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -317,6 +322,98 @@ index 2e1437d..e41a541 100644
 +    updateUI(ic);
 +}
 +
++// SogaKey: Space typed as the first tone. Fuzzy mode cannot tell it from "no
++// tone typed yet", so ask a plain (exact) context which characters really read
++// as the last typed syllable with the first tone.
++static std::string lastUtf8Char(const std::string &text) {
++    size_t i = text.size();
++    while (i > 0 && (static_cast<unsigned char>(text[i - 1]) & 0xC0) == 0x80) {
++        --i;
++    }
++    return i > 0 ? text.substr(i - 1) : std::string();
++}
++
++std::vector<std::string> ChewingEngine::exactToneOne() {
++    std::vector<std::string> result;
++    if (typed_.empty() || typed_.back() != ' ' || !shadow_) {
++        return result;
++    }
++    auto *s = shadow_.get();
++    replayRaw(typed_);
++    if (chewing_bopomofo_Check(s) != 0) {
++        return result;
++    }
++    int len = chewing_get_phoneSeqLen(s);
++    if (len < 1) {
++        return result;
++    }
++    unsigned short *seq = chewing_get_phoneSeq(s);
++    if (!seq) {
++        return result;
++    }
++    unsigned short last = seq[len - 1];
++    chewing_free(seq);
++    char buf[64] = {0};
++    if (chewing_phone_to_bopomofo(last, buf, sizeof(buf)) < 0) {
++        return result;
++    }
++    static const char kKeys[] = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-";
++    static const char *const kZy[] = {
++        "ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ", "ㄍ", "ㄎ", "ㄏ", "ㄐ", "ㄑ",
++        "ㄒ", "ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ", "ㄧ", "ㄨ", "ㄩ", "ㄚ", "ㄛ",
++        "ㄜ", "ㄝ", "ㄞ", "ㄟ", "ㄠ", "ㄡ", "ㄢ", "ㄣ", "ㄤ", "ㄥ", "ㄦ"};
++    std::string keys;
++    for (const char *p = buf; *p;) {
++        bool matched = false;
++        for (size_t i = 0; i < sizeof(kZy) / sizeof(kZy[0]); ++i) {
++            const size_t l = std::char_traits<char>::length(kZy[i]);
++            if (std::char_traits<char>::compare(p, kZy[i], l) == 0) {
++                keys.push_back(kKeys[i]);
++                p += l;
++                matched = true;
++                break;
++            }
++        }
++        if (!matched) {
++            return result; // carries a tone mark or something unknown
++        }
++    }
++    if (keys.empty()) {
++        return result;
++    }
++    keys.push_back(' ');
++    if (!exact_) {
++        exact_.reset(getChewingContext());
++        applyConfig(exact_.get(), true);
++        chewing_config_set_int(exact_.get(), "chewing.conversion_engine",
++                               CHEWING_CONVERSION_ENGINE);
++    }
++    auto *e = exact_.get();
++    chewing_cand_close(e);
++    chewing_clean_preedit_buf(e);
++    chewing_clean_bopomofo_buf(e);
++    chewing_Reset(e);
++    for (char c : keys) {
++        feedKey(e, c);
++    }
++    if (chewing_cand_open(e) == 0) {
++        chewing_cand_Enumerate(e);
++        int count = 0;
++        while (chewing_cand_hasNext(e) && count < 3000) {
++            std::string cand = chewing_cand_String_static(e);
++            ++count;
++            if (utf8::length(cand) == 1) {
++                result.push_back(std::move(cand));
++            }
++        }
++        chewing_cand_close(e);
++    }
++    chewing_clean_preedit_buf(e);
++    chewing_clean_bopomofo_buf(e);
++    chewing_Reset(e);
++    return result;
++}
++
 +std::unique_ptr<CommonCandidateList> ChewingEngine::buildLiveList() {
 +    if (!typedValid_ || typed_.empty() || !shadow_) {
 +        return nullptr;
@@ -338,6 +435,10 @@ index 2e1437d..e41a541 100644
 +    }
 +    auto live = std::make_unique<CommonCandidateList>();
 +    live->setPageSize(10);
++    // characters that really are the typed syllable with tone 1 (Space)
++    const std::vector<std::string> toneOne = exactToneOne();
++    const std::unordered_set<std::string> toneOneSet(toneOne.begin(),
++                                                     toneOne.end());
 +    std::vector<std::string> seen;
 +    auto add = [&](std::string text, size_t keys) {
 +        if (std::find(seen.begin(), seen.end(), text) != seen.end()) {
@@ -362,8 +463,25 @@ index 2e1437d..e41a541 100644
 +        if (keys == n) {
 +            // the engine's own best guess for everything typed
 +            std::string guess = safeChewing_buffer_String(s);
-+            if (!guess.empty() && static_cast<int>(utf8::length(guess)) == len) {
++            if (!guess.empty() && static_cast<int>(utf8::length(guess)) == len &&
++                (toneOneSet.empty() ||
++                 toneOneSet.count(lastUtf8Char(guess)) > 0)) {
 +                add(guess, keys);
++            }
++            // a single character with tone 1: list exactly those characters
++            // first (the fuzzy list would bury them among all tones)
++            if (len == 1 && !toneOne.empty()) {
++                std::vector<std::pair<int, std::string>> exactLevel;
++                for (const auto &c : toneOne) {
++                    exactLevel.emplace_back(freqOf(c), c);
++                }
++                std::stable_sort(exactLevel.begin(), exactLevel.end(),
++                                 [](const auto &x, const auto &y) {
++                                     return x.first > y.first;
++                                 });
++                for (auto &entry : exactLevel) {
++                    add(std::move(entry.second), keys);
++                }
 +            }
 +        }
 +        if (chewing_cand_open(s) != 0) {
@@ -386,6 +504,14 @@ index 2e1437d..e41a541 100644
 +                         [](const auto &x, const auto &y) {
 +                             return x.first > y.first;
 +                         });
++        if (keys == n && !toneOneSet.empty()) {
++            // phrases ending in the typed tone-1 syllable first
++            std::stable_partition(level.begin(), level.end(),
++                                  [&](const auto &entry) {
++                                      return toneOneSet.count(
++                                                 lastUtf8Char(entry.second)) > 0;
++                                  });
++        }
 +        for (auto &entry : level) {
 +            add(std::move(entry.second), keys);
 +        }
@@ -450,7 +576,7 @@ index 2e1437d..e41a541 100644
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +751,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +873,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -458,7 +584,7 @@ index 2e1437d..e41a541 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,8 +875,61 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,8 +997,61 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -520,7 +646,7 @@ index 2e1437d..e41a541 100644
          chewingReturnValue = chewing_handle_Space(ctx);
      } else if (keyEvent.key().check(FcitxKey_Tab)) {
          chewingReturnValue = chewing_handle_Tab(ctx);
-@@ -492,6 +949,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +1071,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -528,7 +654,7 @@ index 2e1437d..e41a541 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +1022,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +1144,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -536,7 +662,7 @@ index 2e1437d..e41a541 100644
      updateUI(ic);
  }
  
-@@ -591,6 +1050,55 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +1172,55 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -592,7 +718,7 @@ index 2e1437d..e41a541 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +1126,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +1248,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -620,7 +746,7 @@ index 2e1437d..e41a541 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +1181,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1303,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
@@ -637,10 +763,10 @@ index 2e1437d..e41a541 100644
  
      updatePreedit(ic);
 diff --git a/src/eim.h b/src/eim.h
-index 334d363..b0c2123 100644
+index 334d363..2e7e13e 100644
 --- a/src/eim.h
 +++ b/src/eim.h
-@@ -26,7 +26,10 @@
+@@ -26,7 +26,11 @@
  #include <fcitx/inputmethodengine.h>
  #include <fcitx/instance.h>
  #include <fcitx/text.h>
@@ -648,10 +774,11 @@ index 334d363..b0c2123 100644
 +#include <memory>
  #include <string>
 +#include <unordered_map>
++#include <unordered_set>
  #include <vector>
  
  namespace fcitx {
-@@ -211,7 +214,39 @@ public:
+@@ -211,7 +215,40 @@ public:
  
      ChewingContext *context() { return context_.get(); }
  
@@ -677,6 +804,7 @@ index 334d363..b0c2123 100644
 +    void syncTyped(int key);
 +    bool replayMatches(const std::string &keys);
 +    void replayRaw(const std::string &keys);
++    std::vector<std::string> exactToneOne();
 +    void finishLive(InputContext *ic, const std::string &text);
 +    void learn(const std::string &typed, const std::string &text);
 +    void loadLearned();
@@ -691,12 +819,14 @@ index 334d363..b0c2123 100644
      bool handleCandidateKeyEvent(const KeyEvent &keyEvent) const;
      void updatePreeditImpl(InputContext *ic);
  
-@@ -221,6 +256,11 @@ private:
+@@ -221,6 +258,13 @@ private:
      Instance *instance_;
      ChewingConfig config_;
      UniqueCPtr<ChewingContext, chewing_delete> context_;
 +    // A second context used to preview phrases for the typed keys.
 +    UniqueCPtr<ChewingContext, chewing_delete> shadow_;
++    // A third, exact (non fuzzy) context: which characters read as a syllable
++    UniqueCPtr<ChewingContext, chewing_delete> exact_;
 +    std::string typed_;
 +    bool typedValid_ = true;
 +    bool liveShown_ = false;
