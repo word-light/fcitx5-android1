@@ -61,9 +61,51 @@ static void run(const char *keys) {
     }
     chewing_delete(real); chewing_delete(s);
 }
+
+static const char *KEYS="1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-";
+static const char *ZY[]={"ㄅ","ㄆ","ㄇ","ㄈ","ㄉ","ㄊ","ㄋ","ㄌ","ㄍ","ㄎ","ㄏ","ㄐ","ㄑ","ㄒ","ㄓ","ㄔ","ㄕ","ㄖ","ㄗ","ㄘ","ㄙ","ㄧ","ㄨ","ㄩ","ㄚ","ㄛ","ㄜ","ㄝ","ㄞ","ㄟ","ㄠ","ㄡ","ㄢ","ㄣ","ㄤ","ㄥ","ㄦ"};
+static void exact_for(const char *typed) {
+    int n = (int)strlen(typed);
+    ChewingContext *s = mk();
+    replay(s, typed, n);
+    int len = chewing_get_phoneSeqLen(s);
+    unsigned short *seq = chewing_get_phoneSeq(s);
+    printf("== exact for '%s' phoneSeqLen=%d\n", typed, len);
+    if (len < 1) return;
+    char buf[64] = {0};
+    chewing_phone_to_bopomofo(seq[len - 1], buf, sizeof buf);
+    printf("  last syllable bopomofo='%s'\n", buf);
+    char keys[32] = {0}; int kn = 0;
+    const char *p = buf;
+    while (*p) {
+        int matched = 0;
+        for (int z = 0; z < 37; z++) {
+            size_t l = strlen(ZY[z]);
+            if (!strncmp(p, ZY[z], l)) { keys[kn++] = KEYS[z]; p += l; matched = 1; break; }
+        }
+        if (!matched) { printf("  unmapped at '%s'\n", p); break; }
+    }
+    keys[kn++] = ' ';
+    printf("  rebuilt keys='%s'\n", keys);
+    ChewingContext *e = mk();
+    chewing_config_set_int(e, "chewing.conversion_engine", 1);
+    for (int i = 0; i < kn; i++) feed(e, keys[i]);
+    state("exact", e);
+    int r = chewing_cand_open(e);
+    printf("  cand_open=%d total=%d:", r, chewing_cand_TotalChoice(e));
+    chewing_cand_Enumerate(e);
+    int k = 0, found = 0;
+    while (chewing_cand_hasNext(e)) { const char *c = chewing_cand_String_static(e); if (k < 30) printf(" %s", c); if (!strcmp(c, "肌")) found = 1; k++; }
+    printf("\n  contains 肌: %d\n", found);
+    chewing_delete(e); chewing_delete(s);
+}
 int main(int argc, char **argv) {
     path = argc > 1 ? argv[1] : ".";
     const char *cases[] = {"su", "su ", "su3", "su ru", "su ru ", "su cl3", "g. ", "g.3 ", "5j ", "g. ru", NULL};
     for (int i = 0; cases[i]; i++) run(cases[i]);
+    exact_for("su ru ");
+    exact_for("ru ");
+    exact_for("ru");
+    exact_for("a3 ru ");
     return 0;
 }
