@@ -1,5 +1,5 @@
 diff --git a/src/eim.cpp b/src/eim.cpp
-index 2e1437d..edcf20d 100644
+index 2e1437d..d5b87ac 100644
 --- a/src/eim.cpp
 +++ b/src/eim.cpp
 @@ -28,11 +28,15 @@
@@ -96,7 +96,7 @@ index 2e1437d..edcf20d 100644
  
      CHEWING_DEBUG() << "Set layout to: "
                      << builtin_keymaps[static_cast<int>(*config_.Layout)];
-@@ -335,10 +392,478 @@ void ChewingEngine::populateConfig() {
+@@ -335,10 +392,518 @@ void ChewingEngine::populateConfig() {
      chewing_set_selKey(ctx, selkey, 10);
      chewing_set_candPerPage(ctx, *config_.PageSize);
      chewing_set_addPhraseDirection(ctx, *config_.AddPhraseForward ? 0 : 1);
@@ -454,13 +454,40 @@ index 2e1437d..edcf20d 100644
 +            live->append<LearnedCandidateWord>(this, text);
 +        }
 +    }
++    // phrases (or characters) the dictionary offers for the first `keys` keys,
++    // exactly `len` characters long, common words first
++    auto collectLevel = [&](int len, size_t keys) {
++        std::vector<std::pair<int, std::string>> level;
++        replayRaw(typed_.substr(0, keys));
++        chewing_handle_Default(s, 'z');
++        if (chewing_cand_open(s) != 0) {
++            return level;
++        }
++        chewing_cand_Enumerate(s);
++        int count = 0;
++        while (chewing_cand_hasNext(s) && count < 1500) {
++            std::string cand = chewing_cand_String_static(s);
++            count++;
++            if (static_cast<int>(utf8::length(cand)) == len) {
++                int f = freqOf(cand);
++                level.emplace_back(f, std::move(cand));
++            }
++        }
++        chewing_cand_close(s);
++        // known common words first (by frequency), the rest keep chewing's order
++        std::stable_sort(level.begin(), level.end(),
++                         [](const auto &x, const auto &y) {
++                             return x.first > y.first;
++                         });
++        return level;
++    };
 +    // longest coverage first
 +    for (auto it = lastKeys.rbegin(); it != lastKeys.rend(); ++it) {
 +        const int len = it->first;
 +        const size_t keys = it->second;
-+        replayRaw(typed_.substr(0, keys));
-+        chewing_handle_Default(s, 'z');
 +        if (keys == n) {
++            replayRaw(typed_.substr(0, keys));
++            chewing_handle_Default(s, 'z');
 +            // the engine's own best guess for everything typed
 +            std::string guess = safeChewing_buffer_String(s);
 +            if (!guess.empty() && static_cast<int>(utf8::length(guess)) == len &&
@@ -484,26 +511,39 @@ index 2e1437d..edcf20d 100644
 +                }
 +            }
 +        }
-+        if (chewing_cand_open(s) != 0) {
-+            continue;
-+        }
-+        chewing_cand_Enumerate(s);
-+        int count = 0;
-+        std::vector<std::pair<int, std::string>> level;
-+        while (chewing_cand_hasNext(s) && count < 1500) {
-+            std::string cand = chewing_cand_String_static(s);
-+            count++;
-+            if (static_cast<int>(utf8::length(cand)) == len) {
-+                int f = freqOf(cand);
-+                level.emplace_back(f, std::move(cand));
++        auto level = collectLevel(len, keys);
++        if (keys == n && !toneOne.empty() && len >= 2) {
++            // The dictionary may not know the word (e.g. 美肌). Build words
++            // from a common beginning plus the exact tone-1 last character.
++            auto prev = lastKeys.find(len - 1);
++            if (prev != lastKeys.end()) {
++                auto heads = collectLevel(len - 1, prev->second);
++                std::vector<std::pair<int, std::string>> tails;
++                for (const auto &c : toneOne) {
++                    tails.emplace_back(freqOf(c), c);
++                }
++                std::stable_sort(tails.begin(), tails.end(),
++                                 [](const auto &x, const auto &y) {
++                                     return x.first > y.first;
++                                 });
++                std::vector<std::pair<int, std::string>> synth;
++                for (size_t h = 0; h < heads.size() && h < 6; ++h) {
++                    for (size_t t = 0; t < tails.size() && t < 30; ++t) {
++                        std::string word = heads[h].second + tails[t].second;
++                        synth.emplace_back(freqOf(word), std::move(word));
++                    }
++                }
++                std::stable_sort(synth.begin(), synth.end(),
++                                 [](const auto &x, const auto &y) {
++                                     return x.first > y.first;
++                                 });
++                level.insert(level.begin(), synth.begin(), synth.end());
++                std::stable_sort(level.begin(), level.end(),
++                                 [](const auto &x, const auto &y) {
++                                     return x.first > y.first;
++                                 });
 +            }
 +        }
-+        chewing_cand_close(s);
-+        // known common words first (by frequency), the rest keep chewing's order
-+        std::stable_sort(level.begin(), level.end(),
-+                         [](const auto &x, const auto &y) {
-+                             return x.first > y.first;
-+                         });
 +        if (keys == n && !toneOneSet.empty()) {
 +            // phrases ending in the typed tone-1 syllable first
 +            std::stable_partition(level.begin(), level.end(),
@@ -576,7 +616,7 @@ index 2e1437d..edcf20d 100644
  }
  
  void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
-@@ -348,6 +873,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
+@@ -348,6 +913,7 @@ void ChewingEngine::reset(const InputMethodEntry & /*entry*/,
  
  void ChewingEngine::doReset(InputContextEvent &event) {
      ChewingContext *ctx = context_.get();
@@ -584,7 +624,7 @@ index 2e1437d..edcf20d 100644
      chewing_cand_close(ctx);
      chewing_clean_preedit_buf(ctx);
      chewing_clean_bopomofo_buf(ctx);
-@@ -471,8 +997,61 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -471,8 +1037,61 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          return;
      }
  
@@ -646,7 +686,7 @@ index 2e1437d..edcf20d 100644
          chewingReturnValue = chewing_handle_Space(ctx);
      } else if (keyEvent.key().check(FcitxKey_Tab)) {
          chewingReturnValue = chewing_handle_Tab(ctx);
-@@ -492,6 +1071,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -492,6 +1111,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          }
          chewingReturnValue = chewing_handle_Default(ctx, scan_code);
          chewing_set_easySymbolInput(ctx, 0);
@@ -654,7 +694,7 @@ index 2e1437d..edcf20d 100644
      } else if (keyEvent.key().check(FcitxKey_BackSpace)) {
          if ((chewing_buffer_Check(ctx)) == 0 &&
              (chewing_bopomofo_Check(ctx) == 0)) {
-@@ -564,6 +1144,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
+@@ -564,6 +1184,7 @@ void ChewingEngine::keyEvent(const InputMethodEntry &entry,
          keyEvent.filterAndAccept();
          ic->commitString(safeChewing_commit_String(ctx));
      }
@@ -662,7 +702,7 @@ index 2e1437d..edcf20d 100644
      updateUI(ic);
  }
  
-@@ -591,6 +1172,55 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
+@@ -591,6 +1212,55 @@ void ChewingEngine::filterKey(const InputMethodEntry & /*entry*/,
      }
  }
  
@@ -718,7 +758,7 @@ index 2e1437d..edcf20d 100644
  void ChewingEngine::updatePreeditImpl(InputContext *ic) {
      ic->inputPanel().setClientPreedit(Text());
      ic->inputPanel().setPreedit(Text());
-@@ -618,6 +1248,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
+@@ -618,6 +1288,27 @@ void ChewingEngine::updatePreeditImpl(InputContext *ic) {
          useClientPreedit ? TextFormatFlag::Underline : TextFormatFlag::NoFlag;
      Text preedit;
  
@@ -746,7 +786,7 @@ index 2e1437d..edcf20d 100644
      int cur = chewing_cursor_Current(ctx);
      int rcur = text.size();
      if (cur >= 0 && static_cast<size_t>(cur) < len) {
-@@ -652,8 +1303,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
+@@ -652,8 +1343,15 @@ void ChewingEngine::updateUI(InputContext *ic) {
      ic->inputPanel().reset();
      ic->inputPanel().setCandidateList(
          std::make_unique<ChewingCandidateList>(this, ic));
