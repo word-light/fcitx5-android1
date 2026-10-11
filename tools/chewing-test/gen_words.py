@@ -1,5 +1,7 @@
 # Build a TSV of common words (jieba frequency list) with Dachen key sequences
 import re, sys
+from opencc import OpenCC
+cc = OpenCC('s2t')
 from pypinyin import pinyin, Style
 KEY = {"ㄅ":"1","ㄆ":"q","ㄇ":"a","ㄈ":"z","ㄉ":"2","ㄊ":"w","ㄋ":"s","ㄌ":"x","ㄍ":"e","ㄎ":"d","ㄏ":"c","ㄐ":"r","ㄑ":"f","ㄒ":"v","ㄓ":"5","ㄔ":"t","ㄕ":"g","ㄖ":"b","ㄗ":"y","ㄘ":"h","ㄙ":"n","ㄧ":"u","ㄨ":"j","ㄩ":"m","ㄚ":"8","ㄛ":"i","ㄜ":"k","ㄝ":",","ㄞ":"9","ㄟ":"o","ㄠ":"l","ㄡ":".","ㄢ":"0","ㄣ":"p","ㄤ":";","ㄥ":"/","ㄦ":"-"}
 TONE = {"ˊ":"6","ˇ":"3","ˋ":"4"}
@@ -8,7 +10,7 @@ out = []
 for line in open(sys.argv[1], encoding='utf-8'):
     p = line.split()
     if len(p) < 2 or not p[1].isdigit(): continue
-    w, f = p[0], int(p[1])
+    w, f = cc.convert(p[0]), int(p[1])
     if not cjk.match(w) or not (2 <= len(w) <= 4) or f < int(sys.argv[3]): continue
     keys = ''
     ok = True

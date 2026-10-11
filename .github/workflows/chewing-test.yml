@@ -35,7 +35,7 @@ jobs:
             DICT=$GITHUB_WORKSPACE/lib/fcitx5/src/main/cpp/prebuilt/chewing-dict
             ls -la $DICT
             CHEWING_USER_PATH=/tmp/u LD_LIBRARY_PATH=$LIB ./t $DICT
-            pip install pypinyin --break-system-packages -q || pip install pypinyin -q
+            pip install pypinyin opencc-python-reimplemented --break-system-packages -q || pip install pypinyin opencc-python-reimplemented -q
             curl -fsSL https://raw.githubusercontent.com/fxsjy/jieba/master/extra_dict/dict.txt.big -o /tmp/dict.txt.big
             python3 $GITHUB_WORKSPACE/tools/chewing-test/gen_words.py /tmp/dict.txt.big /tmp/words.tsv 20
             echo "===== COVERAGE ====="
