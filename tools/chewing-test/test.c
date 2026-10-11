@@ -99,10 +99,46 @@ static void exact_for(const char *typed) {
     printf("\n  contains 肌: %d\n", found);
     chewing_delete(e); chewing_delete(s);
 }
+
+// Where does a word land when listing phrases for typed keys (like buildLiveList)?
+static void where(const char *keys, const char *target, int fuzzy) {
+    int n = (int)strlen(keys);
+    ChewingContext *s = mk();
+    chewing_config_set_int(s, "chewing.conversion_engine", fuzzy ? 2 : 1);
+    replay(s, keys, n);
+    if (fuzzy) chewing_handle_Default(s, 'z');
+    printf("== where keys='%s' target='%s' fuzzy=%d buffer='%s' len=%d\n", keys, target, fuzzy,
+           chewing_buffer_String_static(s), chewing_buffer_Len(s));
+    int r = chewing_cand_open(s);
+    int total = chewing_cand_TotalChoice(s);
+    chewing_cand_Enumerate(s);
+    int idx = -1, k = 0, wl = chewing_buffer_Len(s);
+    int same = 0, sameIdx = -1;
+    const char *first[6]; int fc = 0; char firstbuf[6][32];
+    while (chewing_cand_hasNext(s)) {
+        const char *c = chewing_cand_String_static(s);
+        if (idx < 0 && !strcmp(c, target)) idx = k;
+        if (fc < 6) { strncpy(firstbuf[fc], c, 31); firstbuf[fc][31] = 0; fc++; }
+        k++;
+    }
+    printf("  cand_open=%d total=%d enumerated=%d index_of_target=%d first:", r, total, k, idx);
+    for (int i = 0; i < fc; i++) printf(" %s", firstbuf[i]);
+    printf("\n");
+    (void)wl; (void)same; (void)sameIdx; (void)first;
+    chewing_cand_close(s);
+    chewing_delete(s);
+}
 int main(int argc, char **argv) {
     path = argc > 1 ? argv[1] : ".";
     const char *cases[] = {"su", "su ", "su3", "su ru", "su ru ", "su cl3", "g. ", "g.3 ", "5j ", "g. ru", NULL};
     for (int i = 0; cases[i]; i++) run(cases[i]);
+    where("u454", "一致", 0);
+    where("u5", "一致", 1);
+    where("u5", "一直", 1);
+    where("u54", "一致", 1);
+    where("u45", "一致", 1);
+    where("u4", "一", 1);
+    where("g.r", "手機", 1);
     exact_for("su ru ");
     exact_for("ru ");
     exact_for("ru");
