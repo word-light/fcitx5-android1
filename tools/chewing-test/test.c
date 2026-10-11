@@ -132,6 +132,12 @@ int main(int argc, char **argv) {
     path = argc > 1 ? argv[1] : ".";
     const char *cases[] = {"su", "su ", "su3", "su ru", "su ru ", "su cl3", "g. ", "g.3 ", "5j ", "g. ru", NULL};
     for (int i = 0; cases[i]; i++) run(cases[i]);
+    where("u654", "一致", 0);
+    where("u654", "一致", 1);
+    where("u 54", "一致", 1);
+    where("u 5", "一致", 1);
+    where("u6 5", "一致", 1);
+    where("u65", "一致", 1);
     where("u454", "一致", 0);
     where("u5", "一致", 1);
     where("u5", "一直", 1);
