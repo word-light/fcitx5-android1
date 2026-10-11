@@ -3,6 +3,7 @@
 #include <chewing.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static const char *path;
 static ChewingContext *mk(void) {
@@ -128,8 +129,35 @@ static void where(const char *keys, const char *target, int fuzzy) {
     chewing_cand_close(s);
     chewing_delete(s);
 }
+
+// coverage: read word\tkeys\tfreq lines; is each word offered by the exact engine?
+static void coverage(const char *file, int limit) {
+    FILE *fp = fopen(file, "r");
+    if (!fp) { printf("no words file\n"); return; }
+    char line[512];
+    int total = 0, found = 0, shown = 0;
+    ChewingContext *e = mk();
+    chewing_config_set_int(e, "chewing.conversion_engine", 1);
+    while (fgets(line, sizeof line, fp) && total < limit) {
+        char *w = strtok(line, "\t"), *k = strtok(NULL, "\t"), *f = strtok(NULL, "\t\n");
+        if (!w || !k) continue;
+        total++;
+        chewing_cand_close(e); chewing_clean_preedit_buf(e); chewing_clean_bopomofo_buf(e); chewing_Reset(e);
+        for (const char *c = k; *c; c++) feed(e, *c);
+        int ok = !strcmp(chewing_buffer_String_static(e), w);
+        if (!ok && chewing_cand_open(e) == 0) {
+            chewing_cand_Enumerate(e);
+            while (chewing_cand_hasNext(e)) { if (!strcmp(chewing_cand_String_static(e), w)) { ok = 1; break; } }
+            chewing_cand_close(e);
+        }
+        if (ok) found++; else if (shown < 400) { printf("MISSING %s %s %s\n", w, k, f ? f : ""); shown++; }
+    }
+    printf("COVERAGE %d/%d\n", found, total);
+    chewing_delete(e);
+}
 int main(int argc, char **argv) {
     path = argc > 1 ? argv[1] : ".";
+    if (argc > 2) { coverage(argv[2], argc > 3 ? atoi(argv[3]) : 5000); return 0; }
     const char *cases[] = {"su", "su ", "su3", "su ru", "su ru ", "su cl3", "g. ", "g.3 ", "5j ", "g. ru", NULL};
     for (int i = 0; cases[i]; i++) run(cases[i]);
     where("u654", "一致", 0);
